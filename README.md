@@ -7,4 +7,4 @@ simple cell receptive fields", PLoS Computational Biology 7(10).
 and that paper should be cited by any work stemming from use of SAILnet. Zylberberg's original Matlab code can be found here: http://faculty.washington.edu/joelzy/sailcodes.html
 along with the whitened natural image patches used in Zylberberg, Murphy & DeWeese (as well as other studies of sparse coding of natural images).
 
-To imitate the behavior of Zylberberg's Matlab code, simple import SAILnet, create a SAILnet object with the default parameters and call the instance's .run() method.
+To imitate the behavior of Zylberberg's Matlab code, simply import SAILnet, create a SAILnet object with the default parameters and call the instance's .run() method.
