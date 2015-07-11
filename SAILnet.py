@@ -17,13 +17,10 @@ local plasticity and spiking neurons can account for the diverse shapes of V1
 simple cell receptive fields", PLoS Computational Biology 7(10).
 """
 
-import math
-from math import ceil
 import numpy as np
 import scipy.io
 import matplotlib.pyplot as plt
 import pickle
-from sklearn.decomposition import PCA
 
 # TODO: functionality for using PC projections as input but still displaying
 # RFs or STRFs
@@ -55,11 +52,12 @@ class SAILnet:
         Create SAILnet object with given parameters. 
         Defaults are as used in Zylberberg et al.
         
+        Args:
         imagefile:          .mat file containing images for analysis
         datatype:           type of data in imagefile. Images and spectrograms
                             are supported. For PC projections representing
                             spectrograms, use spectro and input the relevant 
-                            sklearn PCA object.
+                            PCA object. Images are assumed to be squares.
         timepoints:         number of time points in each spectrogram (ignored for images)
         batch_size:         number of image presentations between each learning step
         niter:              number of time steps in calculation of activities
@@ -74,6 +72,9 @@ class SAILnet:
         eta_ave:            rate parameter for computing moving averages to get activity stats
         pca:                sklearn PCA object used to create vector inputs.
                             Used here to reconstruct spectrograms for display.
+                            
+        Raises:
+        ValueError when datatype is not one of the supported options.
         """
         # Load input data from MATLAB file
         imagefile = scipy.io.loadmat(imagefilename)
@@ -83,10 +84,9 @@ class SAILnet:
             # If the array is passed in with the indices swapped, transpose it
             self.images = np.transpose(self.images)
         if datatype != "image" and datatype != "spectro":
-            input("Specified data type not supported. Supported types are image \
+            raise ValueError("Specified data type not supported. Supported types are image \
             and spectro. For PC vectors representing spectrograms, input the \
-            sklearn PCA object used to create the PC projections. \
-            Press any key to continue anyway.")
+            PCA object used to create the PC projections.")
 
         # Store instance variables
         self.buffer = buffer
@@ -114,7 +114,7 @@ class SAILnet:
         if self.datatype == "spectro":
             self.lpatch = timepoints 
         else:
-            self.lpatch = math.floor(math.sqrt(self.ninput))
+            self.lpatch = int(np.floor(np.sqrt(self.ninput)))
                 
         # initialize network parameters
         # Q are feedfoward weights (i.e. from input units to output units)
@@ -183,12 +183,12 @@ class SAILnet:
         buf = 1 # buffer pixel(s) between RFs
         
         # n and m are number of rows and columns of spectrograms in the array
-        if math.floor(math.sqrt(M))**2 != M:
-            n = ceil(math.sqrt(M/2.))
-            m = ceil(M/n)
+        if np.floor(np.sqrt(M))**2 != M:
+            n = int(np.ceil(np.sqrt(M/2.)))
+            m = int(np.ceil(M/n))
         else:
             # M is a perfect square
-            m = int(math.sqrt(M))
+            m = int(np.sqrt(M))
             n = m
             
         array = 0.5*np.ones((buf+m*(length+buf), buf+n*(height+buf)))
@@ -214,7 +214,7 @@ class SAILnet:
     
     def show_network(self):
         """
-        Plot current values of weights, thresholds, and time-average firing
+        Plot current values of weights, thresholds, and time-averaged firing
         correlations.
         """
         
@@ -225,7 +225,7 @@ class SAILnet:
         
         plt.subplot(2,2,2)
         C = self.corrmatrix_ave - \
-            np.dot(self.meanact_ave,np.transpose(self.meanact_ave))
+            np.dot(self.meanact_ave, np.transpose(self.meanact_ave))
         plt.imshow(C)
         plt.colorbar()
         plt.title("Moving time-averaged correlation")
@@ -249,13 +249,13 @@ class SAILnet:
         # extract subimages at random from images array to make data array X
         X = np.zeros((self.ninput,self.batch_size))
         for i in range(self.batch_size):
-                row = self.buffer + ceil((self.imsize- 
-                self.lpatch-2*self.buffer)*np.random.rand())
-                col = self.buffer + ceil((self.imsize- 
-                self.lpatch-2*self.buffer)*np.random.rand())
+                row = self.buffer + int(np.ceil((self.imsize- 
+                self.lpatch-2*self.buffer)*np.random.rand()))
+                col = self.buffer + int(np.ceil((self.imsize- 
+                self.lpatch-2*self.buffer)*np.random.rand()))
                 animage = self.images[row:row+self.lpatch,
                                       col:col+self.lpatch,
-                                      math.floor(self.nimages*np.random.rand())]                     
+                                      int(np.floor(self.nimages*np.random.rand()))]                     
                 animage = animage.reshape(self.ninput)
                 animage = animage - np.mean(animage)
                 animage = animage/np.std(animage)
@@ -270,7 +270,7 @@ class SAILnet:
         """
         X = np.zeros((self.ninput,self.batch_size))
         for i in range(self.batch_size):
-            whichimage = math.floor(self.nimages*np.random.rand())
+            whichimage = int(np.floor(self.nimages*np.random.rand()))
             animage = self.images[:,:,whichimage]
             animage = animage.reshape(self.ninput)
             animage = animage - np.mean(animage)
@@ -283,7 +283,7 @@ class SAILnet:
         each of which is an input vector. """
         X = np.zeros((self.ninput,self.batch_size))
         for i in range(self.batch_size):
-            whichvec = math.floor(self.nimages*np.random.rand())
+            whichvec = int(np.floor(self.nimages*np.random.rand()))
             X[:,i] = self.images[:, whichvec]
         return X
     

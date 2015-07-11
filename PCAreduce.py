@@ -6,12 +6,12 @@ Created on Fri Jun 26 16:37:27 2015
 
 Read in images, find principle components, write out images reconstructed
 from subset of the PCs.
+The PCA class is written by Jesse Livezey.
 """
 
 import numpy as np
 import scipy.io
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
+from pca.pca import PCA # Jesse's PCA class
 import pickle
 
 # Current status 2015/7/2: kinda sorta does something, but I'm really not sure
@@ -50,14 +50,14 @@ def preprocessimages(filename = "../../audition/speechdata.mat",
     data = np.nan_to_num(data)
     data = np.clip(data,-1000,1000)   
     
-    # feature scaling
+    # feature scaling. This may be unnecessary since the PCA object also does it?
     datamean = np.mean(data,0)
     data = data - datamean
     datastd = np.std(data,0)
     data = data/datastd
     
     # We want to both reduce dimensionality and whiten
-    pca = PCA(n_components = ncomponents, whiten=whiten)
+    pca = PCA(dim = ncomponents, whiten=whiten)
     pca.fit(data)
     data = pca.transform(data)  
     
