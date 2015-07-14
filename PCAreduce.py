@@ -51,9 +51,9 @@ def preprocessimages(filename = "../../audition/speechdata.mat",
     data = np.clip(data,-1000,1000)   
     
     # feature scaling. This may be unnecessary since the PCA object also does it?
-    datamean = np.mean(data,0)
+    datamean = np.mean(data,axis=0)
     data = data - datamean
-    datastd = np.std(data,0)
+    datastd = np.std(data,axis=0)
     data = data/datastd
     
     # We want to both reduce dimensionality and whiten

@@ -79,6 +79,7 @@ class SAILnet:
         # Load input data from MATLAB file
         imagefile = scipy.io.loadmat(imagefilename)
         self.images = imagefile[imagevarname]
+        
         self.datatype = datatype
         if self.datatype == "spectro" and self.images.shape[0] != ninput:
             # If the array is passed in with the indices swapped, transpose it
@@ -124,11 +125,19 @@ class SAILnet:
         normmatrix = np.diag(1/np.sqrt(np.sum(self.Q*self.Q,1))) 
         self.Q = np.dot(normmatrix,self.Q) # normalize initial feedforward weight vectors
         self.W = np.zeros((self.nunits, self.nunits))
-        self.theta = 2*np.ones(self.nunits)        
+        # These initial conditions for theta were determined by messing aroung to see what worked.
+        if pca is not None:
+            # TODO: This still doesn't really work.
+            self.theta = 0.2*np.ones(self.nunits)
+        else:
+            self.theta = 2*np.ones(self.nunits)        
         
         # initialize average activity stats
         self.meanact_ave = self.p
         self.corrmatrix_ave = self.p**2
+        
+        #initialize history of objective function
+        self.objhistory = np.array([])
   
       
     def compute_activities(self, X):
@@ -147,7 +156,7 @@ class SAILnet:
         
         # projections of stimuli onto feedforward weights
         B = np.dot(self.Q,X)
-        
+
         # initialize values. Note that I've renamed some variables compared to 
         # Zylberberg's code. My variable names more closely follow the paper instead.
         u = np.zeros((self.nunits, self.batch_size)) # internal unit variables
@@ -161,7 +170,7 @@ class SAILnet:
             # external variables should spike when internal variables cross threshholds
             y = np.array([u[:,ind] >= self.theta for ind in range(self.batch_size)])
             y = np.transpose(y)
-            
+
             # add spikes to counts
             acts = acts + y
             
@@ -219,20 +228,21 @@ class SAILnet:
         """
         
         plt.subplot(2,2,1)
-        plt.imshow(self.W)
+        plt.imshow(self.W, interpolation="nearest",aspect='auto')
         plt.colorbar()
         plt.title("Inhibitory weights")
         
         plt.subplot(2,2,2)
         C = self.corrmatrix_ave - \
             np.dot(self.meanact_ave, np.transpose(self.meanact_ave))
-        plt.imshow(C)
+        plt.imshow(C,interpolation="nearest",aspect = 'auto')
         plt.colorbar()
         plt.title("Moving time-averaged correlation")
         
         plt.subplot(2,2,3)
-        self.showrfs()
-        plt.title("Feedforward weights")
+        plt.plot(self.objhistory,'bo')
+        #self.showrfs()
+        #plt.title("Feedforward weights")
         
         plt.subplot(2,2,4)
         plt.bar(np.arange(self.theta.size),self.theta) 
@@ -287,6 +297,16 @@ class SAILnet:
             X[:,i] = self.images[:, whichvec]
         return X
     
+    def scale_pixels(X):
+        """Given input vectors, subtract the mean pixel value and divide by
+        the standard deviation for each vector. Pass in vectors as columns
+        of a matrix."""
+        means = np.mean(X,axis=0)
+        centered = X - means
+        stdev = np.std(centered, axis=0)
+        return centered/stdev
+        
+    
     def run(self, ntrials = 25000):
         """
         Run SAILnet for ntrials: for each trial, create a random set of image
@@ -302,8 +322,15 @@ class SAILnet:
             elif self.datatype == "image":
                 X = self.randpatches()
             
+            # scale data
+            X=SAILnet.scale_pixels(X)
+            
             # compute activities for this data array
             acts = self.compute_activities(X)
+            
+            # Compute and save current value of objective function
+            self.objhistory = np.append(self.objhistory, 
+                                        self.compute_objective(acts,X))            
             
             # compute statistics for this batch
             meanact = np.mean(acts,1)
@@ -325,6 +352,8 @@ class SAILnet:
             # update thresholds with Foldiak's rule: keep firing rates near target
             dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
             self.theta = self.theta + dtheta
+            # TODO: Should theta's be allowed to go negative? Also maybe we need
+            # to adjust gamma for PCvecs?
             
             # compute moving averages of meanact and corrmatrix
             self.meanact_ave = (1 - self.eta_ave)*self.meanact_ave + \
@@ -350,6 +379,33 @@ class SAILnet:
         # Save final parameter values            
         self.save_params()              
      
+    def generate_model(self, acts):
+        """Reconstruct inputs using generative model."""
+        return np.dot(self.Q.T,acts)
+        
+    def compute_errors(self, acts, X):
+        """Given a batch of data and activities, compute the squared error between
+        the generative model and the original data. Returns a vector of squared errors."""
+        diffs = X - self.generate_model(acts)
+        return np.sum(diffs**2,axis=0)
+        
+    def compute_objective(self, acts, X):
+        """Compute value of objective function/Lagrangian averaged over batch."""
+        errorterm = np.sum(self.compute_errors(acts, X))
+        thetarep = np.repeat(self.theta[:,np.newaxis], self.batch_size,axis=1)
+        rateterm = -np.sum(thetarep*(acts - self.p))
+        corrdiffs = np.zeros(self.batch_size)
+        # Construct a matrix  -W_{im}(n_i n_m - p^2) and then sum over all entries.
+        for j in range(self.batch_size):
+            for i in range(self.nunits):
+                for m in range(self.nunits):
+                    corrdiffs[j] = corrdiffs[j] - self.W[i,m]*(acts[i,j]*acts[m,j] -self.p**2)
+            #summands = [-self.W[i,m]*(acts[i,j]*acts[m,j] - self.p**2) for i in range(self.nunits) for m in range(self.nunits)]
+            #print(len(summands))
+            #corrdiffs[j] = np.sum(summands)
+        corrterm = np.sum(corrdiffs)
+        return (errorterm + rateterm + corrterm)/self.batch_size
+        
     
     def save_params(self, filename=None):
         """
