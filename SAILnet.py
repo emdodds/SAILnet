@@ -45,6 +45,7 @@ class SAILnet:
                  alpha = 1.,
                  beta = 0.01,
                  gamma = 0.1,
+                 theta0 = 2,
                  eta_ave = 0.3,
                  picklefile = 'SAILnetparams.pickle',
                  pca = None):
@@ -69,6 +70,7 @@ class SAILnet:
         alpha:              learning rate for inhibitory weights
         beta:               learning rate for feedforward weights
         gamma:              learning rate for thresholds
+        theta0:             initial value of thresholds
         eta_ave:            rate parameter for computing moving averages to get activity stats
         pca:                sklearn PCA object used to create vector inputs.
                             Used here to reconstruct spectrograms for display.
@@ -77,6 +79,7 @@ class SAILnet:
         ValueError when datatype is not one of the supported options.
         """
         # Load input data from MATLAB file
+        # TODO: support for other format(s), probably .csv
         imagefile = scipy.io.loadmat(imagefilename)
         self.images = imagefile[imagevarname]
         
@@ -125,12 +128,7 @@ class SAILnet:
         normmatrix = np.diag(1/np.sqrt(np.sum(self.Q*self.Q,1))) 
         self.Q = np.dot(normmatrix,self.Q) # normalize initial feedforward weight vectors
         self.W = np.zeros((self.nunits, self.nunits))
-        # These initial conditions for theta were determined by messing aroung to see what worked.
-        if pca is not None:
-            # TODO: This still doesn't really work.
-            self.theta = 0.2*np.ones(self.nunits)
-        else:
-            self.theta = 2*np.ones(self.nunits)        
+        self.theta = theta0*np.ones(self.nunits)        
         
         # initialize average activity stats
         self.meanact_ave = self.p
@@ -138,11 +136,12 @@ class SAILnet:
         
         #initialize history of objective function
         self.objhistory = np.array([])
+        self.errorhistory = np.array([])
   
       
-    def compute_activities(self, X):
+    def compute_activities(self, X, do_inference_plot = False):
         """
-        Simulate LIF neurons to get spike counts
+        Simulate LIF neurons to get spike counts. Optionally plot mean square reconstruction error vs time.
         function Y=activities(X,Q,W,theta)
         X:        input array
         Q:        feedforward weights
@@ -163,20 +162,31 @@ class SAILnet:
         y = np.zeros((self.nunits, self.batch_size)) # external unit variables
         acts = np.zeros((self.nunits, self.batch_size)) # counts of total firings
         
+        if do_inference_plot:
+            errors = np.zeros(self.niter)
+        
         for t in range(self.niter):
             # DE for internal variables
             u = (1.-eta)*u + eta*(B - np.dot(self.W,y))
             
             # external variables should spike when internal variables cross threshholds
             y = np.array([u[:,ind] >= self.theta for ind in range(self.batch_size)])
-            y = np.transpose(y)
+            y = y.T
 
             # add spikes to counts
             acts = acts + y
             
+            if do_inference_plot:
+                errors[t] = np.mean(self.compute_errors(acts, X))
+            
             # reset the internal variables of the spiking units
             u = u*(1-y)
-            
+        
+        if do_inference_plot:
+            plt.figure(3)
+            plt.clf()
+            plt.plot(errors)
+        
         return acts  
         
     def showrfs(self):
@@ -228,19 +238,21 @@ class SAILnet:
         """
         
         plt.subplot(2,2,1)
-        plt.imshow(self.W, interpolation="nearest",aspect='auto')
+        plt.imshow(self.W, cmap = "gray", interpolation="nearest",aspect='auto')
         plt.colorbar()
         plt.title("Inhibitory weights")
         
         plt.subplot(2,2,2)
         C = self.corrmatrix_ave - \
             np.dot(self.meanact_ave, np.transpose(self.meanact_ave))
-        plt.imshow(C,interpolation="nearest",aspect = 'auto')
+        plt.imshow(C, cmap = "gray", interpolation="nearest",aspect = 'auto')
         plt.colorbar()
         plt.title("Moving time-averaged correlation")
         
         plt.subplot(2,2,3)
-        plt.plot(self.objhistory,'bo')
+        plt.plot(np.concatenate([self.objhistory[:,None]/np.mean(self.objhistory),
+                                 self.errorhistory[:,None]/np.mean(self.errorhistory)], 1))
+        plt.title("History of objective function and error")
         #self.showrfs()
         #plt.title("Feedforward weights")
         
@@ -294,18 +306,11 @@ class SAILnet:
         X = np.zeros((self.ninput,self.batch_size))
         for i in range(self.batch_size):
             whichvec = int(np.floor(self.nimages*np.random.rand()))
-            X[:,i] = self.images[:, whichvec]
-        return X
-    
-    def scale_pixels(X):
-        """Given input vectors, subtract the mean pixel value and divide by
-        the standard deviation for each vector. Pass in vectors as columns
-        of a matrix."""
-        means = np.mean(X,axis=0)
-        centered = X - means
-        stdev = np.std(centered, axis=0)
-        return centered/stdev
-        
+            avec = self.images[:, whichvec]
+            avec = avec - np.mean(avec)
+            avec = avec/np.std(avec)
+            X[:,i] = avec
+        return X        
     
     def run(self, ntrials = 25000):
         """
@@ -322,19 +327,12 @@ class SAILnet:
             elif self.datatype == "image":
                 X = self.randpatches()
             
-            # scale data
-            X=SAILnet.scale_pixels(X)
-            
             # compute activities for this data array
             acts = self.compute_activities(X)
             
-            # Compute and save current value of objective function
-            self.objhistory = np.append(self.objhistory, 
-                                        self.compute_objective(acts,X))            
-            
             # compute statistics for this batch
             meanact = np.mean(acts,1)
-            corrmatrix = np.dot(acts, np.transpose(acts))
+            corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size 
             
             # update lateral weights with Foldiak's rule 
             # (inhibition for decorrelation)
@@ -361,14 +359,14 @@ class SAILnet:
             self.corrmatrix_ave = (1 - self.eta_ave)*self.corrmatrix_ave + \
                 self.eta_ave*corrmatrix
                 
-            # display network state and activity statistics every 50 trials
+            # save statistics every 50 trials
             if t % 50 == 0:
-                plt.figure(1)
-                plt.clf()
-                self.show_network()
-                plt.figure(2)
-                plt.clf()
-                self.showrfs()
+                # Compute and save current value of objective function
+                self.objhistory = np.append(self.objhistory, 
+                                            self.compute_objective(acts,X))
+                self.errorhistory = np.append(self.errorhistory, 
+                                              np.sum(self.compute_errors(acts, X)))
+                
                 print("Trial number: " + str(t))
                 if t % 5000 == 0:
                     # save progress
@@ -379,8 +377,17 @@ class SAILnet:
         # Save final parameter values            
         self.save_params()              
      
+    def visualize(self):
+        """Display visualizations of network parameters."""
+        plt.figure(1)
+        plt.clf()
+        self.show_network()
+        plt.figure(2)
+        plt.clf()
+        self.showrfs()
+     
     def generate_model(self, acts):
-        """Reconstruct inputs using generative model."""
+        """Reconstruct inputs using linear generative model."""
         return np.dot(self.Q.T,acts)
         
     def compute_errors(self, acts, X):
@@ -394,17 +401,9 @@ class SAILnet:
         errorterm = np.sum(self.compute_errors(acts, X))
         thetarep = np.repeat(self.theta[:,np.newaxis], self.batch_size,axis=1)
         rateterm = -np.sum(thetarep*(acts - self.p))
-        corrdiffs = np.zeros(self.batch_size)
-        # Construct a matrix  -W_{im}(n_i n_m - p^2) and then sum over all entries.
-        for j in range(self.batch_size):
-            for i in range(self.nunits):
-                for m in range(self.nunits):
-                    corrdiffs[j] = corrdiffs[j] - self.W[i,m]*(acts[i,j]*acts[m,j] -self.p**2)
-            #summands = [-self.W[i,m]*(acts[i,j]*acts[m,j] - self.p**2) for i in range(self.nunits) for m in range(self.nunits)]
-            #print(len(summands))
-            #corrdiffs[j] = np.sum(summands)
-        corrterm = np.sum(corrdiffs)
-        return (errorterm + rateterm + corrterm)/self.batch_size
+        corrWmatrix = np.dot(np.dot(np.transpose(acts), self.W),acts)
+        corrterm = -(1/self.batch_size)*np.trace(corrWmatrix) + np.sum(self.W)*self.p**2
+        return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)/self.batch_size
         
     
     def save_params(self, filename=None):
@@ -426,5 +425,13 @@ class SAILnet:
         with open(filename, 'rb') as f:
             self.Q, self.W, self.theta, self.meanact_ave, self.corrmatrix_ave = \
             pickle.load(f)               
+            
+    def adjust_rates(self, factor):
+        """Multiply all the learning rates (alpha, beta, gamma) by the given factor."""
+        self.alpha = factor*self.alpha
+        self.beta = factor*self.beta
+        self.gamma = factor*self.gamma
+        self.objhistory = factor*self.objhistory
+        
             
             
