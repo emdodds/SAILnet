@@ -221,8 +221,8 @@ class SAILnet:
                     clim = max(abs(self.Q[k,:]))
                     for li in range(height):
                         for lj in range(length):
-                            array[buf+(j-1)*(length+buf)+lj, buf+(i-1)*(height+buf)+li] = \
-                            ffweights[k,li+height*lj]/clim
+                            array[buf+(j)*(length+buf)+lj, buf+(i)*(height+buf)+li] = \
+                            ffweights[k,li+height*lj]/clim #-1
                 k = k+1
         
         arrayplot = plt.imshow(array,interpolation='nearest', aspect='auto')
