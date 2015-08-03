@@ -32,10 +32,9 @@ class SAILnet:
     """
     
     def __init__(self,
-                 imagefilename = "IMAGES.mat",
-                 imagevarname = "IMAGES",
+                 images = None,
                  datatype = "image",
-                 timepoints = 25,
+                 imshape = None,
                  batch_size = 100,
                  niter = 50,
                  buffer = 20,
@@ -59,7 +58,7 @@ class SAILnet:
                             are supported. For PC projections representing
                             spectrograms, use spectro and input the relevant 
                             PCA object. Images are assumed to be squares.
-        timepoints:         number of time points in each spectrogram (ignored for images)
+        imshape:            Shape of images/spectrograms. Square by default.
         batch_size:         number of image presentations between each learning step
         niter:              number of time steps in calculation of activities
                             for one image presentation
@@ -78,10 +77,11 @@ class SAILnet:
         Raises:
         ValueError when datatype is not one of the supported options.
         """
-        # Load input data from MATLAB file
-        # TODO: support for other format(s), probably .csv
-        imagefile = scipy.io.loadmat(imagefilename)
-        self.images = imagefile[imagevarname]
+        # If no input data passed in, use IMAGES.mat
+        if images is None:        
+            self.images = scipy.io.loadmat("../Data/IMAGES.mat")["IMAGES"]
+        else:
+            self.images = images
         
         self.datatype = datatype
         if self.datatype == "spectro" and self.images.shape[0] != ninput:
@@ -89,7 +89,7 @@ class SAILnet:
             self.images = np.transpose(self.images)
         if datatype != "image" and datatype != "spectro":
             raise ValueError("Specified data type not supported. Supported types are image \
-            and spectro. For PC vectors representing spectrograms, input the \
+            and spectro. For vectors of PC coefficients, input the \
             PCA object used to create the PC projections.")
 
         # Store instance variables
@@ -115,10 +115,13 @@ class SAILnet:
         
         # size of patches
         self.ninput = ninput # N in original MATLAB code
-        if self.datatype == "spectro":
-            self.lpatch = timepoints 
+        if imshape is None:
+            linput = np.sqrt(self.ninput)
+            self.imshape = (int(linput), int(linput))
+            if linput != self.imshape[0]:
+                raise ValueError("Input size not a perfect square. Please provide image shape.")
         else:
-            self.lpatch = int(np.floor(np.sqrt(self.ninput)))
+            self.imshape = imshape
                 
         # initialize network parameters
         # Q are feedfoward weights (i.e. from input units to output units)
@@ -195,13 +198,15 @@ class SAILnet:
             ffweights = self.pca.inverse_transform(self.Q)
         else:
             ffweights = self.Q
-        M = self.nunits
-        # length and height of each individual RF
-        length = self.lpatch
-        height = int(self.ninput/length)
+            
+        # length and height of each individual RF        
+        length, height = self.imshape
+        assert length*height == ffweights.shape[1]
         buf = 1 # buffer pixel(s) between RFs
         
-        # n and m are number of rows and columns of spectrograms in the array
+        M = self.nunits
+        
+        # n and m are number of rows and columns of RFs in the array
         if np.floor(np.sqrt(M))**2 != M:
             n = int(np.ceil(np.sqrt(M/2.)))
             m = int(np.ceil(M/n))
@@ -210,26 +215,23 @@ class SAILnet:
             m = int(np.sqrt(M))
             n = m
             
-        array = 0.5*np.ones((buf+m*(length+buf), buf+n*(height+buf)))
+        array = 0.5*np.ones((buf+m*(height+buf), buf+n*(length+buf)))
         k = 0
         
-        # TODO: make this less hideously ugly
+        # TODO: make this less ugly
         # Right now it loops over every pixel in the array of STRFs.
-        for j in range(m):
-            for i in range(n):
-                if k <= M:
+        for i in range(n):
+            for j in range(m):
+                if k < M:
                     clim = max(abs(self.Q[k,:]))
                     for li in range(height):
                         for lj in range(length):
-                            array[buf+(j)*(length+buf)+lj, buf+(i)*(height+buf)+li] = \
-                            ffweights[k,li+height*lj]/clim #-1
+                            array[buf+(i)*(height+buf)+li, buf+(j)*(length+buf)+lj] =  \
+                            ffweights[k,lj+length*li]/clim
                 k = k+1
         
-        arrayplot = plt.imshow(array,interpolation='nearest', aspect='auto')
-        if self.datatype == "spectro":
-            arrayplot.set_cmap("jet") 
-        else:
-            arrayplot.set_cmap("gray")
+        arrayplot = plt.imshow(array,interpolation='nearest', cmap="gray", aspect='auto')
+        return arrayplot
     
     def show_network(self):
         """
