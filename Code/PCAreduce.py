@@ -14,12 +14,6 @@ import scipy.io
 from pca.pca import PCA # Jesse's PCA class
 import pickle
 
-# Current status 2015/7/2: kinda sorta does something, but I'm really not sure
-# that what it's doing is right: the reconstructed images look nothing like the
-# original ones. There may be bugs, or it may be that too much info is lost
-# to whitening, or there may be something else. 
-# TODO: figure this out!
-
 def preprocessimages(filename = "../../audition/speechdata.mat", 
                      dataname = "speechdata0",
                      ncomponents=200, 
@@ -29,7 +23,7 @@ def preprocessimages(filename = "../../audition/speechdata.mat",
                      whiten = True):
     """
     Reads images from given .mat file, whitens and reduces dimensionality by
-    PCA, retaining ncomponents PCs. Returns processed images and the sklearn
+    PCA, retaining ncomponents PCs. Returns processed images and the
     PCA object used. This same object should be used to do the inverse transform.
     """
     
@@ -50,7 +44,7 @@ def preprocessimages(filename = "../../audition/speechdata.mat",
     data = np.nan_to_num(data)
     data = np.clip(data,-1000,1000)   
     
-    # feature scaling. This may be unnecessary since the PCA object also does it?
+    # center and normalize. This may be unnecessary since the PCA object also does it?
     datamean = np.mean(data,axis=0)
     data = data - datamean
     datastd = np.std(data,axis=0)

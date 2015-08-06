@@ -71,6 +71,7 @@ class SAILnet:
         gamma:              learning rate for thresholds
         theta0:             initial value of thresholds
         eta_ave:            rate parameter for computing moving averages to get activity stats
+        picklefile:         File in which to save pickled parameters.
         pca:                sklearn PCA object used to create vector inputs.
                             Used here to reconstruct spectrograms for display.
                             
@@ -215,7 +216,7 @@ class SAILnet:
             m = int(np.sqrt(M))
             n = m
             
-        array = 0.5*np.ones((buf+m*(height+buf), buf+n*(length+buf)))
+        array = 0.5*np.ones((buf+n*(height+buf), buf+m*(length+buf)))
         k = 0
         
         # TODO: make this less ugly
@@ -223,14 +224,15 @@ class SAILnet:
         for i in range(n):
             for j in range(m):
                 if k < M:
-                    clim = max(abs(self.Q[k,:]))
+                    normfactor = np.max(np.abs(ffweights[k,:]))
                     for li in range(height):
                         for lj in range(length):
                             array[buf+(i)*(height+buf)+li, buf+(j)*(length+buf)+lj] =  \
-                            ffweights[k,lj+length*li]/clim
+                            ffweights[k,lj+length*li]/normfactor
                 k = k+1
         
         arrayplot = plt.imshow(array,interpolation='nearest', cmap="gray", aspect='auto')
+        plt.colorbar()
         return arrayplot
     
     def show_network(self):
@@ -352,8 +354,6 @@ class SAILnet:
             # update thresholds with Foldiak's rule: keep firing rates near target
             dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
             self.theta = self.theta + dtheta
-            # TODO: Should theta's be allowed to go negative? Also maybe we need
-            # to adjust gamma for PCvecs?
             
             # compute moving averages of meanact and corrmatrix
             self.meanact_ave = (1 - self.eta_ave)*self.meanact_ave + \
@@ -412,21 +412,24 @@ class SAILnet:
         """
         Save parameters to a pickle file, to be picked up later. By default
         we save to the file name stored with the SAILnet instance, but a different
-        file can be passed in as the string filename.
+        file can be passed in as the string filename. This filename is also saved.
         """
         if filename is None:
             filename = self.picklefile
         with open(filename,'wb') as f:
             pickle.dump([self.Q, self.W, self.theta, 
                          self.meanact_ave, self.corrmatrix_ave], f)
+        self.picklefile = filename
 
     def load_params(self, filename = None):
-        """Load parameters (e.g., weights) from a previous run from pickle file."""
+        """Load parameters (e.g., weights) from a previous run from pickle file.
+        This pickle file is then associated with this instance of SAILnet."""
         if filename is None:
             filename = self.picklefile
         with open(filename, 'rb') as f:
             self.Q, self.W, self.theta, self.meanact_ave, self.corrmatrix_ave = \
             pickle.load(f)               
+        self.picklefile = filename
             
     def adjust_rates(self, factor):
         """Multiply all the learning rates (alpha, beta, gamma) by the given factor."""
