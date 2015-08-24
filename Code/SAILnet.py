@@ -21,11 +21,9 @@ import numpy as np
 import scipy.io
 import matplotlib.pyplot as plt
 import pickle
+from DictLearner import DictLearner
 
-# TODO: functionality for using PC projections as input but still displaying
-# RFs or STRFs
-
-class SAILnet:
+class SAILnet(DictLearner):
     """
     Runs SAILnet: Sparse And Independent Local Network
     Currently supports images and spectrograms. (Still working on spectrograms)
@@ -72,7 +70,7 @@ class SAILnet:
         theta0:             initial value of thresholds
         eta_ave:            rate parameter for computing moving averages to get activity stats
         picklefile:         File in which to save pickled parameters.
-        pca:                sklearn PCA object used to create vector inputs.
+        pca:                PCA object used to create vector inputs.
                             Used here to reconstruct spectrograms for display.
                             
         Raises:
@@ -86,8 +84,11 @@ class SAILnet:
         
         self.datatype = datatype
         if self.datatype == "spectro" and self.images.shape[0] != ninput:
-            # If the array is passed in with the indices swapped, transpose it
-            self.images = np.transpose(self.images)
+            if self.images.shape[-1] == ninput:
+                # If the array is passed in with the indices swapped, transpose it
+                self.images = np.transpose(self.images)
+            else:
+                raise ValueError("ninput does not match the shape of the provided inputs.")
         if datatype != "image" and datatype != "spectro":
             raise ValueError("Specified data type not supported. Supported types are image \
             and spectro. For vectors of PC coefficients, input the \
@@ -128,9 +129,7 @@ class SAILnet:
         # Q are feedfoward weights (i.e. from input units to output units)
         # W are horizontal conections (among 'output' units)
         # theta are thresholds for the LIF neurons
-        self.Q = np.random.randn(self.nunits, self.ninput)
-        normmatrix = np.diag(1/np.sqrt(np.sum(self.Q*self.Q,1))) 
-        self.Q = np.dot(normmatrix,self.Q) # normalize initial feedforward weight vectors
+        self.Q = self.rand_dict()
         self.W = np.zeros((self.nunits, self.nunits))
         self.theta = theta0*np.ones(self.nunits)        
         
@@ -142,11 +141,14 @@ class SAILnet:
         self.objhistory = np.array([])
         self.errorhistory = np.array([])
   
+    def rand_dict(self):
+        Q = np.random.randn(self.nunits, self.ninput)
+        normmatrix = np.diag(1/np.sqrt(np.sum(Q*Q,1))) 
+        return np.dot(normmatrix,Q) # normalize initial feedforward weight vectors
       
-    def compute_activities(self, X, do_inference_plot = False):
+    def infer(self, X, do_inference_plot = False):
         """
         Simulate LIF neurons to get spike counts. Optionally plot mean square reconstruction error vs time.
-        function Y=activities(X,Q,W,theta)
         X:        input array
         Q:        feedforward weights
         W:        horizontal weights
@@ -193,8 +195,9 @@ class SAILnet:
         
         return acts  
         
-    def showrfs(self):
-        """Plot receptive fields."""
+    def showrfs(self, cmap = None):
+        """Plot receptive fields, tiled in one big image. Default color map is
+        gray for images and jet for spectrograms."""
         if self.pca is not None:
             ffweights = self.pca.inverse_transform(self.Q)
         else:
@@ -231,7 +234,8 @@ class SAILnet:
                             ffweights[k,lj+length*li]/normfactor
                 k = k+1
         
-        arrayplot = plt.imshow(array,interpolation='nearest', cmap="gray", aspect='auto')
+        cmap = cmap or ('jet' if self.datatype == 'spectro' else 'gray')
+        arrayplot = plt.imshow(array,interpolation='nearest', cmap=cmap, aspect='auto')
         plt.colorbar()
         return arrayplot
     
@@ -316,11 +320,30 @@ class SAILnet:
             X[:,i] = avec
         return X        
     
+    def learn(self, X, acts, corrmatrix):
+        # update lateral weights with Foldiak's rule 
+        # (inhibition for decorrelation)
+        dW = self.alpha*(corrmatrix - self.p**2)
+        self.W = self.W + dW
+        self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
+        self.W[self.W < 0] = 0 # force weights to be inhibitory
+        
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
+        dQ = np.dot(acts,np.transpose(X)) - \
+            np.dot(np.diag(sumsquareacts), self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+        
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+            
+    
     def run(self, ntrials = 25000):
         """
         Run SAILnet for ntrials: for each trial, create a random set of image
         patches, present each to the network, and update the network weights
-        after each set of batch_size presentations. Occasionally display progress.
+        after each set of batch_size presentations.
         """
         for t in range(ntrials):
             # make data array X from random pieces of total data
@@ -332,28 +355,14 @@ class SAILnet:
                 X = self.randpatches()
             
             # compute activities for this data array
-            acts = self.compute_activities(X)
+            acts = self.infer(X)
             
             # compute statistics for this batch
             meanact = np.mean(acts,1)
             corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size 
             
-            # update lateral weights with Foldiak's rule 
-            # (inhibition for decorrelation)
-            dW = self.alpha*(corrmatrix - self.p**2)
-            self.W = self.W + dW
-            self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
-            self.W[self.W < 0] = 0 # force weights to be inhibitory
-            
-            # update feedforward weights with Oja's rule
-            sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
-            dQ = np.dot(acts,np.transpose(X)) - \
-                np.dot(np.diag(sumsquareacts), self.Q)
-            self.Q = self.Q + self.beta*dQ/self.batch_size
-            
-            # update thresholds with Foldiak's rule: keep firing rates near target
-            dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
-            self.theta = self.theta + dtheta
+            # update weights and thresholds according to learning rules
+            self.learn(X, acts, corrmatrix)
             
             # compute moving averages of meanact and corrmatrix
             self.meanact_ave = (1 - self.eta_ave)*self.meanact_ave + \
@@ -412,7 +421,7 @@ class SAILnet:
         """
         Save parameters to a pickle file, to be picked up later. By default
         we save to the file name stored with the SAILnet instance, but a different
-        file can be passed in as the string filename. This filename is also saved.
+        file can be passed in as the string filename. This filename is then saved.
         """
         if filename is None:
             filename = self.picklefile
