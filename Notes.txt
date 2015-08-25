@@ -1,0 +1,94 @@
+2015 July 6
+
+Trying to debug SAILnet operation on principal component representations of spectrograms from speech recordings.
+Reconstructions of the compressed spectrograms look reasonable if we turn whitening off. I'm still not 100% sure I know what the sklearn PCA
+object is doing when whiten = True but I think it's making it so each principal component accounts for the same variance, i.e., making all the
+singular values equal. I think it doesn't and maybe can't reverse this process. I should think about whether that's for mathematical reasons or
+whether I can store the singular value matrix and reconstruct from the whitened representations, or something. Might have to do this by hand,
+abandon sklearn. 
+
+Meanwhile SAILnet gives crazy results. Compare to how it works on the usual whitened image dataset:
+attribute			images			my stuff
+thresholds			O(1)			O(30)
+inhibitory weights		O(100)?			O(200000)
+numbers?			always			sometimes NaN
+ff weights						mean 10^297????
+mean activities			~.05			early: .5, late: 10^-40
+
+Something is very wrong.
+
+July 10
+Jesse's PCA object can undo whitening or so it claims. Works fine on whitened images but the reconstruction of spectrograms is not great. Should try
+keeping more PCs.
+Tested the PCvec operation of SAILnet on compressed images rather than spectrograms and obtained similar nonsense as before. 
+I am baffled at the moment. Maybe somehow the PC vectors aren't in the right format? Maybe some matrix needs to get transposed?
+It's probably something dumb. Keep looking.
+
+July 13
+I think the code actually works but the parameters are wonky. Jesse suggests normalizing each image post-whitening by subtracting the mean
+"pixel" value (i.e. coefficient in the PC representation) and dividing by the standard deviation.
+
+I tried to implement a function to calculate the objective function that SAILnet minimizes. The correlation term takes forever and a half to 
+compute. Maybe only compute the objective function when about to display network. Or drop that term most of the time, occasionally calculate it
+separately. Then we would still get a sense of how fidelity and sparsity are doing.
+In any case, the objective function appears to increase as SAILnet runs (in the ordinary situation where the behavior is correct), so there may 
+be something wrong with the code...such as a minus sign.
+
+July 16
+I think the objective function calculation now works correctly. The ordinary image simulation has a robustly decreasing objective function.
+The PCvec simulation does not; in fact, the objective function tends to start low and asymptote to zero.
+Messing with learning rates changes things, but not yet in the desired way.
+
+July 20
+Plan for today: do more tests to try to localize the problem with the PCvec representation handling. Ideas:
+1) Validate the error calculation. If not simple to do, maybe just fabricate inputs where we know the answers.
+2) Check that the stored PCvecs, inverse-transformed and fed to SAILnet, produce the usual correct behavior. 
+
+July 21
+Ideas from Jesse:
+1) Plot reconstruction error as a function of iteration in the inference step. Should go down.
+2) Check that Jesse's PCA object is correctly NOT multiplying by the inverse of the tiny eigenvalues when doing the whitening.
+This is controlled by the eps parameter.
+3) Consider normalizing reconstructions, taking rates rather than spike counts, etc
+
+Results:
+1) Reconstruction error decreases with time, although by about 20 with well-trained imPC compared to about 100 with well-trained normal.
+
+July 22
+As Jesse suggested, I looked at the PCs for the image data set and the first couple PCs look like some sort of edge artifacts.
+The most straightforward solution is probably to do the PCA preprocessing on larger images (18x18 or maybe 20x20) then chop off the edges.
+This solution may not generalize well to the spectrograms, though. 
+
+July 23
+Removed 20 pixel wide perimeter from original 512x512 images; this corrects the spurious PCs with bars at top and bottom. 
+The corresponding RFs are also gone, but there are still a lot of nonsense RFs.
+One possibility I haven't really examined yet: maybe there's some funny business with transform-->normalize-->inverse transform 
+
+I tried the dumb test of passing in images as if they were principle component vectors, using a pca object with transformation equal to the identity.
+The result is similar to the usual way of presenting images, but not as clean. What gives?
+
+Another easyish thing to try: instead of chopping up big images in grid, do it in all ways or a large random subset of all ways to be more like
+usual presentation.
+
+July 24
+
+The gridwise chopping does seem to matter; taking a larger (but still proper) subset of all possible images to present to SAILnet improves
+performance compared to the ~8000 gridwise chopped images. I think at this point we can safely say that the code within SAILnet to handle
+PC-vector representations is working ok. The next step is to pass in the chopped images in PC representation with nontrivial transformation.
+Hopefully the results will still be good...
+
+Ok so it looks like whitening messes stuff up a bit, so we get some nice Gabor-like filters but also some grainy stuff. Saved parameters as
+params7_24.pickle.
+I think this is fine for our purposes: when we go to spectrograms we will be reducing dimensionality and the super fine structure will probably
+not contribute at all.
+
+So I think everything is fine and was almost fine weeks ago. Whatever. Anyway, the next step is to go ahead and feed the network spectrograms.
+One thing to notice is that we need to worry about having enough data.
+One thought is to fit the PCA on a manageable subset of the spectrograms, then batch-process the rest of the data through the prefit PCA
+so that we can get all the spectrograms (and maybe even the rest of the speech data) 
+
+August 3
+Stuff might actually be working, but the visualization is broken for spectrograms so I'll need to fix that first.
+
+August 5
+Stuff seems to work. Emailed Mike. 

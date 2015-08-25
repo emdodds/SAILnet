@@ -22,6 +22,7 @@ import scipy.io
 import matplotlib.pyplot as plt
 import pickle
 from DictLearner import DictLearner
+import StimSet
 
 class SAILnet(DictLearner):
     """
@@ -30,9 +31,9 @@ class SAILnet(DictLearner):
     """
     
     def __init__(self,
-                 images = None,
+                 data = None,
                  datatype = "image",
-                 imshape = None,
+                 stimshape = None,
                  batch_size = 100,
                  niter = 50,
                  buffer = 20,
@@ -51,7 +52,7 @@ class SAILnet(DictLearner):
         Defaults are as used in Zylberberg et al.
         
         Args:
-        imagefile:          .mat file containing images for analysis
+        data:               numpy array of data for analysis
         datatype:           type of data in imagefile. Images and spectrograms
                             are supported. For PC projections representing
                             spectrograms, use spectro and input the relevant 
@@ -76,26 +77,20 @@ class SAILnet(DictLearner):
         Raises:
         ValueError when datatype is not one of the supported options.
         """
-        # If no input data passed in, use IMAGES.mat
-        if images is None:        
-            self.images = scipy.io.loadmat("../Data/IMAGES.mat")["IMAGES"]
-        else:
-            self.images = images
+        # If no input data passed in, use IMAGES.mat       
+        data = data or scipy.io.loadmat("../Data/IMAGES.mat")["IMAGES"]
         
         self.datatype = datatype
-        if self.datatype == "spectro" and self.images.shape[0] != ninput:
-            if self.images.shape[-1] == ninput:
+        
+        if self.datatype == "spectro" and data.shape[0] != ninput:
+            if self.data.shape[-1] == ninput:
                 # If the array is passed in with the indices swapped, transpose it
-                self.images = np.transpose(self.images)
+                self.data = np.transpose(self.data)
             else:
                 raise ValueError("ninput does not match the shape of the provided inputs.")
-        if datatype != "image" and datatype != "spectro":
-            raise ValueError("Specified data type not supported. Supported types are image \
-            and spectro. For vectors of PC coefficients, input the \
-            PCA object used to create the PC projections.")
+            
 
         # Store instance variables
-        self.buffer = buffer
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -107,23 +102,22 @@ class SAILnet(DictLearner):
         self.picklefile = picklefile
         self.pca = pca
         
-        # size and number of inputs
-        if self.pca is None:
-            # Then each input is 2D
-            [self.imsize, _, self.nimages] = self.images.shape
-        else:
-            # Then we're using PC vectors, so each input is 1D
-            [self.imsize, self.nimages] = self.images.shape
-        
         # size of patches
         self.ninput = ninput # N in original MATLAB code
-        if imshape is None:
+        if stimshape is None:
             linput = np.sqrt(self.ninput)
-            self.imshape = (int(linput), int(linput))
+            stimshape = (int(linput), int(linput))
             if linput != self.imshape[0]:
                 raise ValueError("Input size not a perfect square. Please provide image shape.")
+            
+        if datatype == "spectro":
+            self.stims = StimSet.PCvecSet(images, self.imshape, self.pca, self.batch_size)
+        elif datatype == "image":
+            self.stims = StimSet.ImageSet(images, batch_size=batch_size, buffer=buffer, stimshape=self.imshape)
         else:
-            self.imshape = imshape
+            raise ValueError("Specified data type not supported. Supported types are image \
+            and spectro. For vectors of PC coefficients, input the \
+            PCA object used to create the PC projections.")
                 
         # initialize network parameters
         # Q are feedfoward weights (i.e. from input units to output units)
@@ -140,13 +134,9 @@ class SAILnet(DictLearner):
         #initialize history of objective function
         self.objhistory = np.array([])
         self.errorhistory = np.array([])
-  
-    def rand_dict(self):
-        Q = np.random.randn(self.nunits, self.ninput)
-        normmatrix = np.diag(1/np.sqrt(np.sum(Q*Q,1))) 
-        return np.dot(normmatrix,Q) # normalize initial feedforward weight vectors
+        
       
-    def infer(self, X, do_inference_plot = False):
+    def infer(self, X, infplot = False):
         """
         Simulate LIF neurons to get spike counts. Optionally plot mean square reconstruction error vs time.
         X:        input array
@@ -168,7 +158,7 @@ class SAILnet(DictLearner):
         y = np.zeros((self.nunits, self.batch_size)) # external unit variables
         acts = np.zeros((self.nunits, self.batch_size)) # counts of total firings
         
-        if do_inference_plot:
+        if infplot:
             errors = np.zeros(self.niter)
         
         for t in range(self.niter):
@@ -182,13 +172,13 @@ class SAILnet(DictLearner):
             # add spikes to counts
             acts = acts + y
             
-            if do_inference_plot:
+            if infplot:
                 errors[t] = np.mean(self.compute_errors(acts, X))
             
             # reset the internal variables of the spiking units
             u = u*(1-y)
         
-        if do_inference_plot:
+        if infplot:
             plt.figure(3)
             plt.clf()
             plt.plot(errors)
@@ -197,45 +187,12 @@ class SAILnet(DictLearner):
         
     def showrfs(self, cmap = None):
         """Plot receptive fields, tiled in one big image. Default color map is
-        gray for images and jet for spectrograms."""
-        if self.pca is not None:
-            ffweights = self.pca.inverse_transform(self.Q)
-        else:
-            ffweights = self.Q
-            
-        # length and height of each individual RF        
-        length, height = self.imshape
-        assert length*height == ffweights.shape[1]
-        buf = 1 # buffer pixel(s) between RFs
-        
-        M = self.nunits
-        
-        # n and m are number of rows and columns of RFs in the array
-        if np.floor(np.sqrt(M))**2 != M:
-            n = int(np.ceil(np.sqrt(M/2.)))
-            m = int(np.ceil(M/n))
-        else:
-            # M is a perfect square
-            m = int(np.sqrt(M))
-            n = m
-            
-        array = 0.5*np.ones((buf+n*(height+buf), buf+m*(length+buf)))
-        k = 0
-        
-        # TODO: make this less ugly
-        # Right now it loops over every pixel in the array of STRFs.
-        for i in range(n):
-            for j in range(m):
-                if k < M:
-                    normfactor = np.max(np.abs(ffweights[k,:]))
-                    for li in range(height):
-                        for lj in range(length):
-                            array[buf+(i)*(height+buf)+li, buf+(j)*(length+buf)+lj] =  \
-                            ffweights[k,lj+length*li]/normfactor
-                k = k+1
+        gray for images and jet for spectrograms."""            
+        array = self.stims.stimarray(self.Q)
         
         cmap = cmap or ('jet' if self.datatype == 'spectro' else 'gray')
         arrayplot = plt.imshow(array,interpolation='nearest', cmap=cmap, aspect='auto')
+        plt.gca().invert_yaxis()
         plt.colorbar()
         return arrayplot
     
@@ -269,58 +226,10 @@ class SAILnet(DictLearner):
         plt.title(r"Thresholds $\theta$")
         
         plt.show()
-
-    def randpatches(self):
-        """
-        Select random patches from the image data. Returns data array of
-        batch_size columns, each of which is an unrolled image patch of size
-        ninput.
-        """
-        # extract subimages at random from images array to make data array X
-        X = np.zeros((self.ninput,self.batch_size))
-        for i in range(self.batch_size):
-                row = self.buffer + int(np.ceil((self.imsize- 
-                self.lpatch-2*self.buffer)*np.random.rand()))
-                col = self.buffer + int(np.ceil((self.imsize- 
-                self.lpatch-2*self.buffer)*np.random.rand()))
-                animage = self.images[row:row+self.lpatch,
-                                      col:col+self.lpatch,
-                                      int(np.floor(self.nimages*np.random.rand()))]                     
-                animage = animage.reshape(self.ninput)
-                animage = animage - np.mean(animage)
-                animage = animage/np.std(animage)
-                X[:,i] = animage
-        return X
-        
-    def randspectros(self):
-        """
-        Select random spectrograms from the spectrogram data. Returns array
-        of batch_size columns, each of which is an unrolled image of a 
-        spectrogram of size ninput.
-        """
-        X = np.zeros((self.ninput,self.batch_size))
-        for i in range(self.batch_size):
-            whichimage = int(np.floor(self.nimages*np.random.rand()))
-            animage = self.images[:,:,whichimage]
-            animage = animage.reshape(self.ninput)
-            animage = animage - np.mean(animage)
-            animage = animage/np.std(animage)
-            X[:,i] = animage
-        return X
-        
-    def randvecs(self):
-        """Select random vector inputs. Return an array of batch_size columns,
-        each of which is an input vector. """
-        X = np.zeros((self.ninput,self.batch_size))
-        for i in range(self.batch_size):
-            whichvec = int(np.floor(self.nimages*np.random.rand()))
-            avec = self.images[:, whichvec]
-            avec = avec - np.mean(avec)
-            avec = avec/np.std(avec)
-            X[:,i] = avec
-        return X        
+           
     
     def learn(self, X, acts, corrmatrix):
+        """Use learning rules to update network parameters."""
         # update lateral weights with Foldiak's rule 
         # (inhibition for decorrelation)
         dW = self.alpha*(corrmatrix - self.p**2)
@@ -347,12 +256,7 @@ class SAILnet(DictLearner):
         """
         for t in range(ntrials):
             # make data array X from random pieces of total data
-            if self.pca is not None:
-                X = self.randvecs()
-            elif self.datatype == "spectro":
-                X = self.randspectros()
-            elif self.datatype == "image":
-                X = self.randpatches()
+            X = self.stims.rand_stim()
             
             # compute activities for this data array
             acts = self.infer(X)
