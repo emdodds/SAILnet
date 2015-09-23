@@ -43,7 +43,7 @@ class SAILnet(DictLearner):
                  alpha = 1.,
                  beta = 0.01,
                  gamma = 0.1,
-                 theta0 = 2,
+                 theta0 = 0.5,
                  eta_ave = 0.3,
                  picklefile = 'SAILnetparams.pickle',
                  pca = None):
@@ -77,15 +77,16 @@ class SAILnet(DictLearner):
         Raises:
         ValueError when datatype is not one of the supported options.
         """
-        # If no input data passed in, use IMAGES.mat       
-        data = data or scipy.io.loadmat("../Data/IMAGES.mat")["IMAGES"]
+        # If no input data passed in, use IMAGES.mat  
+        if data is None:
+            data = scipy.io.loadmat("../Data/IMAGES.mat")["IMAGES"]
         
         self.datatype = datatype
         
         if self.datatype == "spectro" and data.shape[0] != ninput:
-            if self.data.shape[-1] == ninput:
+            if data.shape[-1] == ninput:
                 # If the array is passed in with the indices swapped, transpose it
-                self.data = np.transpose(self.data)
+                data = np.transpose(data)
             else:
                 raise ValueError("ninput does not match the shape of the provided inputs.")
             
@@ -107,13 +108,13 @@ class SAILnet(DictLearner):
         if stimshape is None:
             linput = np.sqrt(self.ninput)
             stimshape = (int(linput), int(linput))
-            if linput != self.imshape[0]:
+            if linput != stimshape[0]:
                 raise ValueError("Input size not a perfect square. Please provide image shape.")
             
         if datatype == "spectro":
-            self.stims = StimSet.PCvecSet(images, self.imshape, self.pca, self.batch_size)
+            self.stims = StimSet.PCvecSet(data, stimshape, self.pca, self.batch_size)
         elif datatype == "image":
-            self.stims = StimSet.ImageSet(images, batch_size=batch_size, buffer=buffer, stimshape=self.imshape)
+            self.stims = StimSet.ImageSet(data, batch_size=batch_size, buffer=buffer, stimshape=stimshape)
         else:
             raise ValueError("Specified data type not supported. Supported types are image \
             and spectro. For vectors of PC coefficients, input the \
@@ -185,7 +186,7 @@ class SAILnet(DictLearner):
         
         return acts  
         
-    def showrfs(self, cmap = None):
+    def show_dict(self, cmap = None):
         """Plot receptive fields, tiled in one big image. Default color map is
         gray for images and jet for spectrograms."""            
         array = self.stims.stimarray(self.Q)
@@ -299,7 +300,7 @@ class SAILnet(DictLearner):
         self.show_network()
         plt.figure(2)
         plt.clf()
-        self.showrfs()
+        self.show_dict()
      
     def generate_model(self, acts):
         """Reconstruct inputs using linear generative model."""
@@ -351,5 +352,16 @@ class SAILnet(DictLearner):
         self.gamma = factor*self.gamma
         self.objhistory = factor*self.objhistory
         
-            
-            
+    def sort_dict(self, batch_size=None):
+        """Sorts the feedforward RFs in order by their activities on a batch.
+        By default the batch used for this computation is 10x the usual one,
+        since otherwise many dictionary elements tend to have zero activity."""
+        batch_size = batch_size or 10*self.batch_size
+        testX = self.stims.rand_stim(batch_size)
+        meanacts = np.mean(self.infer(testX),axis=1)   
+        sorter = np.argsort(meanacts)
+        self.Q = self.Q[sorter]
+        self.W = self.W[sorter]
+        self.W = self.W.T[sorter].T
+        self.theta = self.theta[sorter]
+        return meanacts[sorter]

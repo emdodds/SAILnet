@@ -8,4 +8,4 @@ Created on Mon Jun 22 14:57:04 2015
 import SAILnet
 
 net = SAILnet.SAILnet()
-net.run()
+#net.run()
