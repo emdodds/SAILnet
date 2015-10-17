@@ -83,8 +83,8 @@ class SAILnet(DictLearner):
         
         self.datatype = datatype
         
-        if self.datatype == "spectro" and data.shape[0] != ninput:
-            if data.shape[-1] == ninput:
+        if self.datatype == "spectro" and data.shape[1] != ninput:
+            if data.shape[0] == ninput:
                 # If the array is passed in with the indices swapped, transpose it
                 data = np.transpose(data)
             else:
@@ -155,9 +155,9 @@ class SAILnet(DictLearner):
 
         # initialize values. Note that I've renamed some variables compared to 
         # Zylberberg's code. My variable names more closely follow the paper instead.
-        u = np.zeros((self.nunits, self.batch_size)) # internal unit variables
-        y = np.zeros((self.nunits, self.batch_size)) # external unit variables
-        acts = np.zeros((self.nunits, self.batch_size)) # counts of total firings
+        u = np.zeros((self.nunits, X.shape[-1])) # internal unit variables
+        y = np.zeros((self.nunits, X.shape[-1])) # external unit variables
+        acts = np.zeros((self.nunits, X.shape[-1])) # counts of total firings
         
         if infplot:
             errors = np.zeros(self.niter)
@@ -167,7 +167,7 @@ class SAILnet(DictLearner):
             u = (1.-eta)*u + eta*(B - np.dot(self.W,y))
             
             # external variables should spike when internal variables cross threshholds
-            y = np.array([u[:,ind] >= self.theta for ind in range(self.batch_size)])
+            y = np.array([u[:,ind] >= self.theta for ind in range(X.shape[-1])])
             y = y.T
 
             # add spikes to counts
@@ -353,15 +353,32 @@ class SAILnet(DictLearner):
         self.objhistory = factor*self.objhistory
         
     def sort_dict(self, batch_size=None):
-        """Sorts the feedforward RFs in order by their activities on a batch.
+        """Sorts the feedforward RFs in order by their usage on a batch.
         By default the batch used for this computation is 10x the usual one,
         since otherwise many dictionary elements tend to have zero activity."""
         batch_size = batch_size or 10*self.batch_size
         testX = self.stims.rand_stim(batch_size)
-        meanacts = np.mean(self.infer(testX),axis=1)   
-        sorter = np.argsort(meanacts)
+        #meanacts = np.mean(self.infer(testX),axis=1)   
+        usage = np.mean(self.infer(testX) != 0,axis=1)
+        sorter = np.argsort(usage)
         self.Q = self.Q[sorter]
         self.W = self.W[sorter]
         self.W = self.W.T[sorter].T
         self.theta = self.theta[sorter]
-        return meanacts[sorter]
+        self.meanact_ave = self.meanact_ave[sorter]
+        self.corrmatrix_ave = self.corrmatrix_ave[sorter]
+        self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
+        plt.plot(usage)
+        return usage[sorter]
+        
+#    def sort_dict(self, plot = True):
+#        """Sort the feedforward RFs in order by their moving time-averaged activities."""
+#        sorter = np.argsort(self.meanact_ave)
+#        self.Q = self.Q[sorter]
+#        self.W = self.W[sorter]
+#        self.W = self.W.T[sorter].T
+#        self.theta = self.theta[sorter]
+#        self.meanact_ave = self.meanact_ave[sorter]
+#        self.corrmatrix_ave = self.corrmatrix_ave[sorter]
+#        self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
+#        plt.plot(self.meanact_ave) 
