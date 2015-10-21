@@ -27,7 +27,7 @@ import StimSet
 class SAILnet(DictLearner):
     """
     Runs SAILnet: Sparse And Independent Local Network
-    Currently supports images and spectrograms. (Still working on spectrograms)
+    Currently supports images and spectrograms.
     """
     
     def __init__(self,
@@ -44,6 +44,7 @@ class SAILnet(DictLearner):
                  beta = 0.01,
                  gamma = 0.1,
                  theta0 = 0.5,
+                 infrate = 0.1,
                  eta_ave = 0.3,
                  picklefile = 'SAILnetparams.pickle',
                  pca = None):
@@ -69,6 +70,7 @@ class SAILnet(DictLearner):
         beta:               learning rate for feedforward weights
         gamma:              learning rate for thresholds
         theta0:             initial value of thresholds
+        infrate:            rate parameter for inference with LIF circuit
         eta_ave:            rate parameter for computing moving averages to get activity stats
         picklefile:         File in which to save pickled parameters.
         pca:                PCA object used to create vector inputs.
@@ -95,6 +97,7 @@ class SAILnet(DictLearner):
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
+        self.infrate = infrate
         self.eta_ave = eta_ave
         self.p = p        
         self.batch_size = batch_size
@@ -147,27 +150,26 @@ class SAILnet(DictLearner):
         Y:        outputs
         """
         
-        # rate parameter for numerical integration
-        eta = 0.1
+        nstim = X.shape[-1]        
         
         # projections of stimuli onto feedforward weights
         B = np.dot(self.Q,X)
 
         # initialize values. Note that I've renamed some variables compared to 
         # Zylberberg's code. My variable names more closely follow the paper instead.
-        u = np.zeros((self.nunits, X.shape[-1])) # internal unit variables
-        y = np.zeros((self.nunits, X.shape[-1])) # external unit variables
-        acts = np.zeros((self.nunits, X.shape[-1])) # counts of total firings
+        u = np.zeros((self.nunits, nstim)) # internal unit variables
+        y = np.zeros((self.nunits, nstim)) # external unit variables
+        acts = np.zeros((self.nunits, nstim)) # counts of total firings
         
         if infplot:
             errors = np.zeros(self.niter)
         
         for t in range(self.niter):
             # DE for internal variables
-            u = (1.-eta)*u + eta*(B - np.dot(self.W,y))
+            u = (1.-self.infrate)*u + self.infrate*(B - np.dot(self.W,y))
             
             # external variables should spike when internal variables cross threshholds
-            y = np.array([u[:,ind] >= self.theta for ind in range(X.shape[-1])])
+            y = np.array([u[:,ind] >= self.theta for ind in range(nstim)])
             y = y.T
 
             # add spikes to counts
