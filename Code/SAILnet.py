@@ -58,7 +58,7 @@ class SAILnet(DictLearner):
                             are supported. For PC projections representing
                             spectrograms, use spectro and input the relevant 
                             PCA object. Images are assumed to be squares.
-        imshape:            Shape of images/spectrograms. Square by default.
+        stimshape:            Shape of images/spectrograms. Square by default.
         batch_size:         number of image presentations between each learning step
         niter:              number of time steps in calculation of activities
                             for one image presentation
@@ -123,6 +123,11 @@ class SAILnet(DictLearner):
             and spectro. For vectors of PC coefficients, input the \
             PCA object used to create the PC projections.")
                 
+        self.initialize(theta0)
+        
+        
+    def initialize(self, theta0=0.5):
+        """Initialize or reset weights, averages, histories."""
         # initialize network parameters
         # Q are feedfoward weights (i.e. from input units to output units)
         # W are horizontal conections (among 'output' units)
@@ -138,7 +143,6 @@ class SAILnet(DictLearner):
         #initialize history of objective function
         self.objhistory = np.array([])
         self.errorhistory = np.array([])
-        
       
     def infer(self, X, infplot = False):
         """
@@ -163,10 +167,12 @@ class SAILnet(DictLearner):
         
         if infplot:
             errors = np.zeros(self.niter)
+            uhists = np.zeros((self.niter, self.nunits))
+            yhists = np.zeros((self.niter, self.nunits))
         
         for t in range(self.niter):
             # DE for internal variables
-            u = (1.-self.infrate)*u + self.infrate*(B - np.dot(self.W,y))
+            u = (1.-self.infrate)*u + self.infrate*(B - self.W.dot(y))
             
             # external variables should spike when internal variables cross threshholds
             y = np.array([u[:,ind] >= self.theta for ind in range(nstim)])
@@ -177,6 +183,8 @@ class SAILnet(DictLearner):
             
             if infplot:
                 errors[t] = np.mean(self.compute_errors(acts, X))
+                uhists[t,:] = u[:,0]
+                yhists[t,:] = y[:,0]
             
             # reset the internal variables of the spiking units
             u = u*(1-y)
@@ -185,19 +193,11 @@ class SAILnet(DictLearner):
             plt.figure(3)
             plt.clf()
             plt.plot(errors)
+            plt.figure(4)
+            plt.clf()
+            plt.plot(np.transpose([uhists[:,0].T,yhists[:,0].T]))
         
-        return acts  
-        
-    def show_dict(self, cmap = None):
-        """Plot receptive fields, tiled in one big image. Default color map is
-        gray for images and jet for spectrograms."""            
-        array = self.stims.stimarray(self.Q)
-        
-        cmap = cmap or ('jet' if self.datatype == 'spectro' else 'gray')
-        arrayplot = plt.imshow(array,interpolation='nearest', cmap=cmap, aspect='auto')
-        plt.gca().invert_yaxis()
-        plt.colorbar()
-        return arrayplot
+        return acts
     
     def show_network(self):
         """
@@ -242,8 +242,7 @@ class SAILnet(DictLearner):
         
         # update feedforward weights with Oja's rule
         sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
-        dQ = np.dot(acts,np.transpose(X)) - \
-            np.dot(np.diag(sumsquareacts), self.Q)
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
         self.Q = self.Q + self.beta*dQ/self.batch_size
         
         # update thresholds with Foldiak's rule: keep firing rates near target
@@ -251,11 +250,12 @@ class SAILnet(DictLearner):
         self.theta = self.theta + dtheta
             
     
-    def run(self, ntrials = 25000):
+    def run(self, ntrials = 25000, rate_decay=1):
         """
         Run SAILnet for ntrials: for each trial, create a random set of image
         patches, present each to the network, and update the network weights
         after each set of batch_size presentations.
+        The learning rates area all multiplied by the factor rate_decay after each trial.
         """
         for t in range(ntrials):
             # make data array X from random pieces of total data
@@ -291,7 +291,10 @@ class SAILnet(DictLearner):
                     print("Saving progress...")
                     self.save_params()
                     print("Done. Continuing to run...")
-                    
+            
+            # adjust rates
+            self.adjust_rates(rate_decay)
+            
         # Save final parameter values            
         self.save_params()              
      
@@ -332,9 +335,10 @@ class SAILnet(DictLearner):
         """
         if filename is None:
             filename = self.picklefile
+        histories = (self.meanact_ave, self.corrmatrix_ave, self.errorhistory, self.objhistory)
+        rates = (self.alpha, self.beta, self.gamma)
         with open(filename,'wb') as f:
-            pickle.dump([self.Q, self.W, self.theta, 
-                         self.meanact_ave, self.corrmatrix_ave], f)
+            pickle.dump([self.Q, self.W, self.theta, rates, histories], f)
         self.picklefile = filename
 
     def load_params(self, filename = None):
@@ -343,8 +347,10 @@ class SAILnet(DictLearner):
         if filename is None:
             filename = self.picklefile
         with open(filename, 'rb') as f:
-            self.Q, self.W, self.theta, self.meanact_ave, self.corrmatrix_ave = \
-            pickle.load(f)               
+            self.Q, self.W, self.theta, rates, histories = \
+            pickle.load(f)        
+        self.meanact_ave, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+        self.alpha, self.beta, self.gamma = rates
         self.picklefile = filename
             
     def adjust_rates(self, factor):
@@ -354,12 +360,15 @@ class SAILnet(DictLearner):
         self.gamma = factor*self.gamma
         self.objhistory = factor*self.objhistory
         
-    def sort_dict(self, batch_size=None):
+    def sort_dict(self, batch_size=None, allstims=False):
         """Sorts the feedforward RFs in order by their usage on a batch.
         By default the batch used for this computation is 10x the usual one,
         since otherwise many dictionary elements tend to have zero activity."""
         batch_size = batch_size or 10*self.batch_size
-        testX = self.stims.rand_stim(batch_size)
+        if allstims:
+            testX = self.stims.data.T
+        else:
+            testX = self.stims.rand_stim(batch_size)
         #meanacts = np.mean(self.infer(testX),axis=1)   
         usage = np.mean(self.infer(testX) != 0,axis=1)
         sorter = np.argsort(usage)
@@ -370,7 +379,7 @@ class SAILnet(DictLearner):
         self.meanact_ave = self.meanact_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
-        plt.plot(usage)
+        plt.plot(usage[sorter])
         return usage[sorter]
         
 #    def sort_dict(self, plot = True):
