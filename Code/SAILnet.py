@@ -233,6 +233,16 @@ class SAILnet(DictLearner):
     
     def learn(self, X, acts, corrmatrix):
         """Use learning rules to update network parameters."""
+        
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size        
+        
+        #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity # TODO: REMOVE REMOVE REMOVE REMOVE REMOVE
+        #corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size
+
+
         # update lateral weights with Foldiak's rule 
         # (inhibition for decorrelation)
         dW = self.alpha*(corrmatrix - self.p**2)
@@ -240,10 +250,7 @@ class SAILnet(DictLearner):
         self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
         self.W[self.W < 0] = 0 # force weights to be inhibitory
         
-        # update feedforward weights with Oja's rule
-        sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
-        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
-        self.Q = self.Q + self.beta*dQ/self.batch_size
+        
         
         # update thresholds with Foldiak's rule: keep firing rates near target
         dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
