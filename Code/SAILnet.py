@@ -36,6 +36,7 @@ class SAILnet(DictLearner):
                  stimshape = None,
                  batch_size = 100,
                  niter = 50,
+                 delay = 0,
                  buffer = 20,
                  ninput = 256,
                  nunits = 256,
@@ -62,6 +63,7 @@ class SAILnet(DictLearner):
         batch_size:         number of image presentations between each learning step
         niter:              number of time steps in calculation of activities
                             for one image presentation
+        delay:              spikes before this time step don't count towards reconstruction and learning
         buffer:             buffer on image edges
         ninput:             number of input units: for images, number of pixels
         nunits:             number of output units
@@ -102,6 +104,7 @@ class SAILnet(DictLearner):
         self.p = p        
         self.batch_size = batch_size
         self.niter = niter
+        self.delay = delay
         self.nunits = nunits # M in original MATLAB code
         self.picklefile = picklefile
         self.pca = pca
@@ -151,7 +154,7 @@ class SAILnet(DictLearner):
         Q:        feedforward weights
         W:        horizontal weights
         theta:    thresholds
-        Y:        outputs
+        y:        outputs
         """
         
         nstim = X.shape[-1]        
@@ -168,7 +171,7 @@ class SAILnet(DictLearner):
         if infplot:
             errors = np.zeros(self.niter)
             uhists = np.zeros((self.niter, self.nunits))
-            yhists = np.zeros((self.niter, self.nunits))
+            yhist = np.zeros((self.niter, self.nunits))
         
         for t in range(self.niter):
             # DE for internal variables
@@ -178,13 +181,14 @@ class SAILnet(DictLearner):
             y = np.array([u[:,ind] >= self.theta for ind in range(nstim)])
             y = y.T
 
-            # add spikes to counts
-            acts = acts + y
+            # add spikes to counts (if using delay, don't count spikes before delay time)
+            if t>=self.delay:
+                acts = acts + y
             
             if infplot:
                 errors[t] = np.mean(self.compute_errors(acts, X))
                 uhists[t,:] = u[:,0]
-                yhists[t,:] = y[:,0]
+                yhist[t,:] = np.sum(y)/nstim
             
             # reset the internal variables of the spiking units
             u = u*(1-y)
@@ -195,7 +199,7 @@ class SAILnet(DictLearner):
             plt.plot(errors)
             plt.figure(4)
             plt.clf()
-            plt.plot(np.transpose([uhists[:,0].T,yhists[:,0].T]))
+            plt.plot(yhist)
         
         return acts
     
@@ -211,8 +215,7 @@ class SAILnet(DictLearner):
         plt.title("Inhibitory weights")
         
         plt.subplot(2,2,2)
-        C = self.corrmatrix_ave - \
-            np.dot(self.meanact_ave, np.transpose(self.meanact_ave))
+        C = self.corrmatrix_ave - np.outer(self.meanact_ave, self.meanact_ave)
         plt.imshow(C, cmap = "gray", interpolation="nearest",aspect = 'auto')
         plt.colorbar()
         plt.title("Moving time-averaged correlation")
@@ -227,8 +230,6 @@ class SAILnet(DictLearner):
         plt.subplot(2,2,4)
         plt.bar(np.arange(self.theta.size),self.theta) 
         plt.title(r"Thresholds $\theta$")
-        
-        plt.show()
            
     
     def learn(self, X, acts, corrmatrix):
@@ -313,6 +314,7 @@ class SAILnet(DictLearner):
         plt.figure(2)
         plt.clf()
         self.show_dict()
+        plt.show()
      
     def generate_model(self, acts):
         """Reconstruct inputs using linear generative model."""
