@@ -170,12 +170,11 @@ class SAILnet(DictLearner):
         
         if infplot:
             errors = np.zeros(self.niter)
-            uhists = np.zeros((self.niter, self.nunits))
-            yhist = np.zeros((self.niter, self.nunits))
+            yhist = np.zeros((self.niter))
         
         for t in range(self.niter):
             # DE for internal variables
-            u = (1.-self.infrate)*u + self.infrate*(B - self.W.dot(y))
+            u = (1.-self.infrate)*u + self.infrate*(B - 2*self.W.dot(y))
             
             # external variables should spike when internal variables cross threshholds
             y = np.array([u[:,ind] >= self.theta for ind in range(nstim)])
@@ -187,8 +186,7 @@ class SAILnet(DictLearner):
             
             if infplot:
                 errors[t] = np.mean(self.compute_errors(acts, X))
-                uhists[t,:] = u[:,0]
-                yhist[t,:] = np.sum(y)/nstim
+                yhist[t] = np.sum(y)/nstim
             
             # reset the internal variables of the spiking units
             u = u*(1-y)
@@ -197,11 +195,32 @@ class SAILnet(DictLearner):
             plt.figure(3)
             plt.clf()
             plt.plot(errors)
+            plt.title('Mean error vs iteration')
             plt.figure(4)
             plt.clf()
             plt.plot(yhist)
+            plt.title('Activity, all stim and units')
         
         return acts
+    
+    def pairwisedot(self, acts=None):
+        pairdots = []
+        if acts is None:
+            for i in range(self.nunits):
+                for j in range(i,self.nunits):
+                    pairdots.append(self.Q[i].dot(self.Q[j]))
+            return pairdots
+        # if acts is provided, only return pairwise dot products for coactive units in a batch
+        for it in range(self.batch_size):
+            itacts = acts[:,it]
+            itdots = []
+            for unit in range(self.nunits):
+                if itacts[unit] >0:
+                    for other in range(unit,self.nunits):
+                        if itacts[other] > 0:
+                            pairdots.append(self.Q[unit].dot(self.Q[other]))
+        return pairdots
+                    
     
     def show_network(self):
         """
@@ -221,8 +240,9 @@ class SAILnet(DictLearner):
         plt.title("Moving time-averaged correlation")
         
         plt.subplot(2,2,3)
-        plt.plot(np.concatenate([self.objhistory[:,None]/np.mean(self.objhistory),
-                                 self.errorhistory[:,None]/np.mean(self.errorhistory)], 1))
+        # The first point is usually huge compared to everything else, so just ignore it
+        plt.plot(np.concatenate([self.objhistory[1:,None]/np.abs(np.mean(self.objhistory)),
+                                 self.errorhistory[1:,None]/np.abs(np.mean(self.errorhistory))], 1))
         plt.title("History of objective function and error")
         #self.showrfs()
         #plt.title("Feedforward weights")
@@ -274,7 +294,7 @@ class SAILnet(DictLearner):
             
             # compute statistics for this batch
             meanact = np.mean(acts,1)
-            corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size 
+            corrmatrix = np.dot(acts, acts.T)/self.batch_size 
             
             # update weights and thresholds according to learning rules
             self.learn(X, acts, corrmatrix)
@@ -356,8 +376,7 @@ class SAILnet(DictLearner):
         if filename is None:
             filename = self.picklefile
         with open(filename, 'rb') as f:
-            self.Q, self.W, self.theta, rates, histories = \
-            pickle.load(f)        
+            self.Q, self.W, self.theta, rates, histories = pickle.load(f)        
         self.meanact_ave, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
         self.alpha, self.beta, self.gamma = rates
         self.picklefile = filename
@@ -391,14 +410,14 @@ class SAILnet(DictLearner):
         plt.plot(usage[sorter])
         return usage[sorter]
         
-#    def sort_dict(self, plot = True):
-#        """Sort the feedforward RFs in order by their moving time-averaged activities."""
-#        sorter = np.argsort(self.meanact_ave)
-#        self.Q = self.Q[sorter]
-#        self.W = self.W[sorter]
-#        self.W = self.W.T[sorter].T
-#        self.theta = self.theta[sorter]
-#        self.meanact_ave = self.meanact_ave[sorter]
-#        self.corrmatrix_ave = self.corrmatrix_ave[sorter]
-#        self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
-#        plt.plot(self.meanact_ave) 
+    def fast_sort(self, plot = True):
+        """Sort the feedforward RFs in order by their moving time-averaged activities."""
+        sorter = np.argsort(self.meanact_ave)
+        self.Q = self.Q[sorter]
+        self.W = self.W[sorter]
+        self.W = self.W.T[sorter].T
+        self.theta = self.theta[sorter]
+        self.meanact_ave = self.meanact_ave[sorter]
+        self.corrmatrix_ave = self.corrmatrix_ave[sorter]
+        self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
+        plt.plot(self.meanact_ave) 

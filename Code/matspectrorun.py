@@ -13,13 +13,13 @@ import pca.pca
 import matplotlib.pyplot as plt
 plt.ioff()
 
-overcompleteness = 8
+overcompleteness = 0.5
 numinput = 200
 numunits = int(overcompleteness*numinput)
 
 pathtoaud = '../../../audition/'
 
-stuff = io.loadmat(pathtoaud+'Nicole Code/PCAmatrices3.mat')
+stuff = io.loadmat(pathtoaud+'Nicole Code/PCAmatricesnew.mat')
 mypca = pca.pca.PCA(dim=200,whiten=True)
 mypca.eVectors = stuff['E'].reshape((25,256,200))[:,::-1,:].reshape((6400,200)).T # flip the PC spectrograms upside down
 mypca.sValues = np.sqrt(np.diag(np.abs(stuff['D1'])))
@@ -27,13 +27,15 @@ mypca.sValues = mypca.sValues[::-1]
 mypca.mean_vec = np.zeros(6400)
 mypca.ready=True
 origshape = (25,256)
-spectros = io.loadmat(pathtoaud+'Nicole Code/dMatPCA3.mat')['dMatPCA'].T
+spectros = io.loadmat(pathtoaud+'Nicole Code/dMatPCAnew.mat')['dMatPCA'].T
 
-net = SAILnet.SAILnet(spectros, 'spectro', origshape, ninput=numinput, nunits=numunits, pca=mypca)
+net = SAILnet.SAILnet(spectros, 'spectro', origshape, ninput=numinput, nunits=numunits, pca=mypca, niter = 50, delay = 0)
 alpha0, beta0, gamma0 = net.alpha, net.beta, net.gamma
 
-
-savedir = pathtoaud+'Results/8OC/newprep/'
+if overcompleteness == 0.5:
+    savedir = pathtoaud+'Results/halfOC/newprep/'
+else:
+    savedir = pathtoaud+'Results/'+str(overcompleteness)+'OC/newprep/'
 
 #pvalues = [0.05,0.1,0.2]
 #for p in pvalues:
@@ -53,16 +55,16 @@ savedir = pathtoaud+'Results/8OC/newprep/'
 #    net.show_dict(cmap='jet')
 #    plt.savefig(savestr+'.png')
 
-p=0.05
+p=.05
 net.p=p
 net.initialize()
 savestr = savedir + 'SAILp' + str(p)
-#net.save_params(savestr + '.pickle')
-net.load_params(savestr+'.pickle') # TODO: uncomment when running old things
-#net.alpha, net.beta, net.gamma = alpha0, beta0, gamma0
-#net.run(100000,rate_decay=.99995)
-#net.run(100000)
-#
+
+
+net.load_params(savestr+'.pickle')
+#net.alpha, net.beta, net.gamma = .5*alpha0, beta0, gamma0
+#net.run(50000)
+##
 #plt.figure()
 #net.sort_dict(allstims=True)
 #plt.savefig(savestr + 'usage.png')
