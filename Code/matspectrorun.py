@@ -4,7 +4,7 @@ Created on Mon Dec 14 00:30:43 2015
 
 @author: Eric
 """
-
+import argparse
 import scipy.io as io
 import SAILnet
 import numpy as np
@@ -13,13 +13,23 @@ import pca.pca
 import matplotlib.pyplot as plt
 plt.ioff()
 
-overcompleteness = 0.5
+parser = argparse.ArgumentParser(description="Run SAILnet with given parameters.")
+parser.add_argument('-o', '--overcompleteness', default=4, type=float)
+parser.add_argument('-f', '--datafolder', default='../audition/Data/', type=str)
+parser.add_argument('-r', '--resultsfolder', default='../audition/Results/',type=str)
+parser.add_argument('-s', '--datasuffix', default='new', type=str)
+parser.add_argument('-p', default = 0.5, type=float)
+args=parser.parse_args()
+
+datafolder = args.datafolder
+resultsfolder = args.resultsfolder
+oc = args.overcompleteness
+datasuffix = args.datasuffix
+
 numinput = 200
-numunits = int(overcompleteness*numinput)
+numunits = int(oc*numinput)
 
-pathtoaud = '../../../audition/'
-
-stuff = io.loadmat(pathtoaud+'Nicole Code/PCAmatricesnew.mat')
+stuff = io.loadmat(datafolder+'PCAmatrices'+datasuffix+'.mat')
 mypca = pca.pca.PCA(dim=200,whiten=True)
 mypca.eVectors = stuff['E'].reshape((25,256,200))[:,::-1,:].reshape((6400,200)).T # flip the PC spectrograms upside down
 mypca.sValues = np.sqrt(np.diag(np.abs(stuff['D1'])))
@@ -27,48 +37,27 @@ mypca.sValues = mypca.sValues[::-1]
 mypca.mean_vec = np.zeros(6400)
 mypca.ready=True
 origshape = (25,256)
-spectros = io.loadmat(pathtoaud+'Nicole Code/dMatPCAnew.mat')['dMatPCA'].T
+spectros = io.loadmat(datafolder+'dMatPCA'+datasuffix+'.mat')['dMatPCA'].T
 
-net = SAILnet.SAILnet(spectros, 'spectro', origshape, ninput=numinput, nunits=numunits, pca=mypca, niter = 50, delay = 0)
+net = SAILnet.SAILnet(spectros, 'spectro', origshape, ninput=numinput, nunits=numunits, pca=mypca)
 alpha0, beta0, gamma0 = net.alpha, net.beta, net.gamma
 
-if overcompleteness == 0.5:
-    savedir = pathtoaud+'Results/halfOC/newprep/'
-else:
-    savedir = pathtoaud+'Results/'+str(overcompleteness)+'OC/newprep/'
+#if overcompleteness == 0.5:
+#    savedir = pathtoaud+'Results/halfOC/newprep/'
+#else:
+#    savedir = pathtoaud+'Results/'+str(overcompleteness)+'OC/newprep/'
 
-#pvalues = [0.05,0.1,0.2]
-#for p in pvalues:
-#    net.p = p
-#    net.alpha, net.beta, net.gamma = alpha0, beta0, gamma0
-#    net.initialize()
-#    
-#    savestr = savedir + 'SAILp' + str(p)
-#    net.save_params(savestr + '.pickle')
-#    
-#    net.run(ntrials = 50000, rate_decay = .9999)
-#    plt.figure()
-#    net.sort_dict(allstims=True)
-#    plt.savefig(savestr + 'usage.png')
-#    net.save_params()
-#    plt.figure()
-#    net.show_dict(cmap='jet')
-#    plt.savefig(savestr+'.png')
-
-p=.05
+p=args.p
 net.p=p
 net.initialize()
-savestr = savedir + 'SAILp' + str(p)
+savestr = str(oc) + 'OCSAILp'+str(p) + datasuffix
 
 
-net.load_params(savestr+'.pickle')
-#net.alpha, net.beta, net.gamma = .5*alpha0, beta0, gamma0
-#net.run(50000)
-##
-#plt.figure()
-#net.sort_dict(allstims=True)
-#plt.savefig(savestr + 'usage.png')
-#net.save_params(savestr)
-#plt.figure()
-#net.show_dict(cmap='jet')
-#plt.savefig(savestr+'.png')
+net.save_params(savestr+'.pickle')
+net.run(10000)
+net.run(200000, rate_decay=.99995)
+net.sort_dict(allstims=True, plot=False)
+net.save_params()
+
+#net.errorhistory = net.errorhistory/numunits/numinput
+#net.plotter.save_plots(savestr, fastsort=True, savesorted=True)

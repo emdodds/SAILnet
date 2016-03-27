@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import pickle
 from DictLearner import DictLearner
 import StimSet
+import plotting
 
 class SAILnet(DictLearner):
     """
@@ -108,6 +109,7 @@ class SAILnet(DictLearner):
         self.nunits = nunits # M in original MATLAB code
         self.picklefile = picklefile
         self.pca = pca
+        self.plotter = plotting.Plotter(self)
         
         # size of patches
         self.ninput = ninput # N in original MATLAB code
@@ -147,7 +149,7 @@ class SAILnet(DictLearner):
         self.objhistory = np.array([])
         self.errorhistory = np.array([])
       
-    def infer(self, X, infplot = False):
+    def infer(self, X, infplot = False, savestr = None):
         """
         Simulate LIF neurons to get spike counts. Optionally plot mean square reconstruction error vs time.
         X:        input array
@@ -186,20 +188,13 @@ class SAILnet(DictLearner):
             
             if infplot:
                 errors[t] = np.mean(self.compute_errors(acts, X))
-                yhist[t] = np.sum(y)/nstim
+                yhist[t] = np.mean(y)
             
             # reset the internal variables of the spiking units
             u = u*(1-y)
         
         if infplot:
-            plt.figure(3)
-            plt.clf()
-            plt.plot(errors)
-            plt.title('Mean error vs iteration')
-            plt.figure(4)
-            plt.clf()
-            plt.plot(yhist)
-            plt.title('Activity, all stim and units')
+            self.plotter.inference_plots(errors, yhist, savestr=savestr)
         
         return acts
     
@@ -220,37 +215,7 @@ class SAILnet(DictLearner):
                         if itacts[other] > 0:
                             pairdots.append(self.Q[unit].dot(self.Q[other]))
         return pairdots
-                    
-    
-    def show_network(self):
-        """
-        Plot current values of weights, thresholds, and time-averaged firing
-        correlations.
-        """
-        
-        plt.subplot(2,2,1)
-        plt.imshow(self.W, cmap = "gray", interpolation="nearest",aspect='auto')
-        plt.colorbar()
-        plt.title("Inhibitory weights")
-        
-        plt.subplot(2,2,2)
-        C = self.corrmatrix_ave - np.outer(self.meanact_ave, self.meanact_ave)
-        plt.imshow(C, cmap = "gray", interpolation="nearest",aspect = 'auto')
-        plt.colorbar()
-        plt.title("Moving time-averaged correlation")
-        
-        plt.subplot(2,2,3)
-        # The first point is usually huge compared to everything else, so just ignore it
-        plt.plot(np.concatenate([self.objhistory[1:,None]/np.abs(np.mean(self.objhistory)),
-                                 self.errorhistory[1:,None]/np.abs(np.mean(self.errorhistory))], 1))
-        plt.title("History of objective function and error")
-        #self.showrfs()
-        #plt.title("Feedforward weights")
-        
-        plt.subplot(2,2,4)
-        plt.bar(np.arange(self.theta.size),self.theta) 
-        plt.title(r"Thresholds $\theta$")
-           
+                               
     
     def learn(self, X, acts, corrmatrix):
         """Use learning rules to update network parameters."""
@@ -328,13 +293,7 @@ class SAILnet(DictLearner):
      
     def visualize(self):
         """Display visualizations of network parameters."""
-        plt.figure(1)
-        plt.clf()
-        self.show_network()
-        plt.figure(2)
-        plt.clf()
-        self.show_dict()
-        plt.show()
+        self.plotter.visualize(self)
      
     def generate_model(self, acts):
         """Reconstruct inputs using linear generative model."""
@@ -344,7 +303,7 @@ class SAILnet(DictLearner):
         """Given a batch of data and activities, compute the squared error between
         the generative model and the original data. Returns a vector of squared errors."""
         diffs = X - self.generate_model(acts)
-        return np.sum(diffs**2,axis=0)
+        return np.mean(diffs**2,axis=0)
         
     def compute_objective(self, acts, X):
         """Compute value of objective function/Lagrangian averaged over batch."""
@@ -388,7 +347,7 @@ class SAILnet(DictLearner):
         self.gamma = factor*self.gamma
         self.objhistory = factor*self.objhistory
         
-    def sort_dict(self, batch_size=None, allstims=False):
+    def sort_dict(self, batch_size=None, allstims=False, plot=True):
         """Sorts the feedforward RFs in order by their usage on a batch.
         By default the batch used for this computation is 10x the usual one,
         since otherwise many dictionary elements tend to have zero activity."""
@@ -407,7 +366,9 @@ class SAILnet(DictLearner):
         self.meanact_ave = self.meanact_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
-        plt.plot(usage[sorter])
+        if plot:
+            plt.plot(usage[sorter])
+            plt.title('Mean L0 activity for each unit, sorted')
         return usage[sorter]
         
     def fast_sort(self, plot = True):
@@ -420,4 +381,6 @@ class SAILnet(DictLearner):
         self.meanact_ave = self.meanact_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
-        plt.plot(self.meanact_ave) 
+        if plot:
+            plt.plot(self.meanact_ave) 
+            plt.title('Mean L1 activity for each unit, sorted')
