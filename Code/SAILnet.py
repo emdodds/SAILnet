@@ -47,7 +47,7 @@ class SAILnet(DictLearner):
                  gamma = 0.1,
                  theta0 = 0.5,
                  infrate = 0.1,
-                 eta_ave = 0.3,
+                 moving_avg_rate = 0.001,
                  picklefile = 'SAILnetparams.pickle',
                  pca = None):
         """
@@ -74,7 +74,7 @@ class SAILnet(DictLearner):
         gamma:              learning rate for thresholds
         theta0:             initial value of thresholds
         infrate:            rate parameter for inference with LIF circuit
-        eta_ave:            rate parameter for computing moving averages to get activity stats
+        moving_avg_rate:    rate parameter for computing moving averages to get activity stats
         picklefile:         File in which to save pickled parameters.
         pca:                PCA object used to create vector inputs.
                             Used here to reconstruct spectrograms for display.
@@ -101,7 +101,7 @@ class SAILnet(DictLearner):
         self.beta = beta
         self.gamma = gamma
         self.infrate = infrate
-        self.eta_ave = eta_ave
+        self.moving_avg_rate = moving_avg_rate
         self.p = p        
         self.batch_size = batch_size
         self.niter = niter
@@ -142,8 +142,9 @@ class SAILnet(DictLearner):
         self.theta = theta0*np.ones(self.nunits)        
         
         # initialize average activity stats
-        self.meanact_ave = self.p
         self.corrmatrix_ave = self.p**2
+        self.L0acts = np.zeros(self.nunits)
+        self.L1acts = np.zeros(self.nunits)
         
         #initialize history of objective function
         self.objhistory = np.array([])
@@ -228,15 +229,12 @@ class SAILnet(DictLearner):
         #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity # TODO: REMOVE REMOVE REMOVE REMOVE REMOVE
         #corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size
 
-
         # update lateral weights with Foldiak's rule 
         # (inhibition for decorrelation)
         dW = self.alpha*(corrmatrix - self.p**2)
         self.W = self.W + dW
         self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
         self.W[self.W < 0] = 0 # force weights to be inhibitory
-        
-        
         
         # update thresholds with Foldiak's rule: keep firing rates near target
         dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
@@ -264,11 +262,11 @@ class SAILnet(DictLearner):
             # update weights and thresholds according to learning rules
             self.learn(X, acts, corrmatrix)
             
-            # compute moving averages of meanact and corrmatrix
-            self.meanact_ave = (1 - self.eta_ave)*self.meanact_ave + \
-                self.eta_ave*meanact
-            self.corrmatrix_ave = (1 - self.eta_ave)*self.corrmatrix_ave + \
-                self.eta_ave*corrmatrix
+            # compute moving averages of activities and corrmatrix
+            self.corrmatrix_ave = (1 - self.moving_avg_rate)*self.corrmatrix_ave + self.moving_avg_rate*corrmatrix
+            self.L1acts = (1-self.moving_avg_rate)*self.L1acts + self.moving_avg_rate*meanact
+            L0means = np.mean(acts != 0,axis=1).astype('float32')
+            self.L0acts = (1-self.moving_avg_rate)*self.L0acts + self.moving_avg_rate*L0means
                 
             # save statistics every 50 trials
             if t % 50 == 0:
@@ -276,7 +274,7 @@ class SAILnet(DictLearner):
                 self.objhistory = np.append(self.objhistory, 
                                             self.compute_objective(acts,X))
                 self.errorhistory = np.append(self.errorhistory, 
-                                              np.sum(self.compute_errors(acts, X)))
+                                              np.mean(self.compute_errors(acts, X)))
                 
                 print("Trial number: " + str(t))
                 if t % 5000 == 0:
@@ -293,17 +291,7 @@ class SAILnet(DictLearner):
      
     def visualize(self):
         """Display visualizations of network parameters."""
-        self.plotter.visualize(self)
-     
-    def generate_model(self, acts):
-        """Reconstruct inputs using linear generative model."""
-        return np.dot(self.Q.T,acts)
-        
-    def compute_errors(self, acts, X):
-        """Given a batch of data and activities, compute the squared error between
-        the generative model and the original data. Returns a vector of squared errors."""
-        diffs = X - self.generate_model(acts)
-        return np.mean(diffs**2,axis=0)
+        self.plotter.visualize()
         
     def compute_objective(self, acts, X):
         """Compute value of objective function/Lagrangian averaged over batch."""
@@ -323,7 +311,7 @@ class SAILnet(DictLearner):
         """
         if filename is None:
             filename = self.picklefile
-        histories = (self.meanact_ave, self.corrmatrix_ave, self.errorhistory, self.objhistory)
+        histories = (self.L0acts,self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory)
         rates = (self.alpha, self.beta, self.gamma)
         with open(filename,'wb') as f:
             pickle.dump([self.Q, self.W, self.theta, rates, histories], f)
@@ -335,8 +323,16 @@ class SAILnet(DictLearner):
         if filename is None:
             filename = self.picklefile
         with open(filename, 'rb') as f:
-            self.Q, self.W, self.theta, rates, histories = pickle.load(f)        
-        self.meanact_ave, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+            self.Q, self.W, self.theta, rates, histories = pickle.load(f)  
+        try:
+            try:
+                self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                assert len(self.L1acts) < 2
+            except AssertionError:
+                self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory, usage = histories
+                self.L0acts = usage
+        except ValueError:
+            self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
         self.alpha, self.beta, self.gamma = rates
         self.picklefile = filename
             
@@ -347,7 +343,7 @@ class SAILnet(DictLearner):
         self.gamma = factor*self.gamma
         self.objhistory = factor*self.objhistory
         
-    def sort_dict(self, batch_size=None, allstims=False, plot=True):
+    def sort_dict(self, batch_size=None, allstims=False, plot=True, savestr=None):
         """Sorts the feedforward RFs in order by their usage on a batch.
         By default the batch used for this computation is 10x the usual one,
         since otherwise many dictionary elements tend to have zero activity."""
@@ -359,28 +355,33 @@ class SAILnet(DictLearner):
         #meanacts = np.mean(self.infer(testX),axis=1)   
         usage = np.mean(self.infer(testX) != 0,axis=1)
         sorter = np.argsort(usage)
+        self.sort(usage, sorter, plot, savestr)
+        self.L0acts = usage[sorter]
+        return self.L0acts
+        
+    def fast_sort(self, plot = True, savestr=None):
+        """Sort the feedforward RFs in order by their moving time-averaged activities."""
+        sorter = np.argsort(self.L0acts)
+        self.sort(self.L0acts, sorter, plot, savestr)
+            
+    def sort(self, usage, sorter, plot=False, savestr=None):
         self.Q = self.Q[sorter]
         self.W = self.W[sorter]
         self.W = self.W.T[sorter].T
         self.theta = self.theta[sorter]
-        self.meanact_ave = self.meanact_ave[sorter]
+        self.L0acts = self.L0acts[sorter]
+        self.L1acts = self.L1acts[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave[sorter]
         self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
         if plot:
+            plt.figure()
             plt.plot(usage[sorter])
             plt.title('Mean L0 activity for each unit, sorted')
-        return usage[sorter]
-        
-    def fast_sort(self, plot = True):
-        """Sort the feedforward RFs in order by their moving time-averaged activities."""
-        sorter = np.argsort(self.meanact_ave)
-        self.Q = self.Q[sorter]
-        self.W = self.W[sorter]
-        self.W = self.W.T[sorter].T
-        self.theta = self.theta[sorter]
-        self.meanact_ave = self.meanact_ave[sorter]
-        self.corrmatrix_ave = self.corrmatrix_ave[sorter]
-        self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
-        if plot:
-            plt.plot(self.meanact_ave) 
-            plt.title('Mean L1 activity for each unit, sorted')
+            if savestr is not None:
+                plt.savefig(savestr, bbox_inches='tight')
+                
+    def test_inference(self):
+        X = self.stims.rand_stim()
+        s = self.infer(X, infplot=True)
+        print("Final SNR: " + str(self.snr(X,s)))
+        return s

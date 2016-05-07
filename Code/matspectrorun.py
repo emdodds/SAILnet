@@ -15,10 +15,10 @@ plt.ioff()
 
 parser = argparse.ArgumentParser(description="Run SAILnet with given parameters.")
 parser.add_argument('-o', '--overcompleteness', default=4, type=float)
-parser.add_argument('-f', '--datafolder', default='../audition/Data/', type=str)
+parser.add_argument('-f', '--datafolder', default='../audition/Nicole Code/', type=str)
 parser.add_argument('-r', '--resultsfolder', default='../audition/Results/',type=str)
 parser.add_argument('-s', '--datasuffix', default='new', type=str)
-parser.add_argument('-p', default = 0.5, type=float)
+parser.add_argument('-p', default = .005, type=float)
 args=parser.parse_args()
 
 datafolder = args.datafolder

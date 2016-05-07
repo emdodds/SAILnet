@@ -25,7 +25,7 @@ class Plotter(object):
         plt.title("Inhibitory weights")
         
         plt.subplot(2,2,2)
-        C = net.corrmatrix_ave - np.outer(net.meanact_ave, net.meanact_ave)
+        C = net.corrmatrix_ave - np.outer(net.L1acts, net.L1acts)
         plt.imshow(C, cmap = "gray", interpolation="nearest",aspect = 'auto')
         plt.colorbar()
         plt.title("Moving time-averaged correlation")
@@ -42,7 +42,7 @@ class Plotter(object):
     def visualize(self):
         """Display visualizations of network parameters."""
         plt.figure()
-        self.show_network(self.net)
+        self.show_network()
         plt.figure()
         self.net.show_dict()
         plt.show()
