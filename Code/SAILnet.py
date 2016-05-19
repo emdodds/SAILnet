@@ -197,26 +197,7 @@ class SAILnet(DictLearner):
         if infplot:
             self.plotter.inference_plots(errors, yhist, savestr=savestr)
         
-        return acts
-    
-    def pairwisedot(self, acts=None):
-        pairdots = []
-        if acts is None:
-            for i in range(self.nunits):
-                for j in range(i,self.nunits):
-                    pairdots.append(self.Q[i].dot(self.Q[j]))
-            return pairdots
-        # if acts is provided, only return pairwise dot products for coactive units in a batch
-        for it in range(self.batch_size):
-            itacts = acts[:,it]
-            itdots = []
-            for unit in range(self.nunits):
-                if itacts[unit] >0:
-                    for other in range(unit,self.nunits):
-                        if itacts[other] > 0:
-                            pairdots.append(self.Q[unit].dot(self.Q[other]))
-        return pairdots
-                               
+        return acts                               
     
     def learn(self, X, acts, corrmatrix):
         """Use learning rules to update network parameters."""
@@ -288,21 +269,27 @@ class SAILnet(DictLearner):
             
         # Save final parameter values            
         self.save_params()              
+        
+    def set_dot_inhib(self):
+        """Sets each inhibitory weight to the dot product of the corresponding units' feedforward weights."""
+        self.W = self.Q.dot(self.Q.T) 
+        self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
+        self.W[self.W < 0] = 0 # force weights to be inhibitory
+        
      
     def visualize(self):
         """Display visualizations of network parameters."""
         self.plotter.visualize()
         
     def compute_objective(self, acts, X):
-        """Compute value of objective function/Lagrangian averaged over batch."""
-        errorterm = np.sum(self.compute_errors(acts, X))
-        thetarep = np.repeat(self.theta[:,np.newaxis], self.batch_size,axis=1)
-        rateterm = -np.sum(thetarep*(acts - self.p))
-        corrWmatrix = np.dot(np.dot(np.transpose(acts), self.W),acts)
-        corrterm = -(1/self.batch_size)*np.trace(corrWmatrix) + np.sum(self.W)*self.p**2
-        return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)/self.batch_size
-        
-    
+        """Compute value of objective function/Lagrangian averaged over batch.
+        Normalized by largest rate."""
+        errorterm = np.mean(self.compute_errors(acts, X))
+        rateterm = -np.mean((acts-self.p)*self.theta[:,np.newaxis])
+        corrWmatrix = acts.T.dot(self.W).dot(acts)
+        corrterm = -(1/acts.shape[1]**2)*np.trace(corrWmatrix) + np.sum(self.W)*self.p**2
+        return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)/max(self.alpha, self.beta, self.gamma, 1e-10)
+          
     def save_params(self, filename=None):
         """
         Save parameters to a pickle file, to be picked up later. By default
@@ -311,7 +298,7 @@ class SAILnet(DictLearner):
         """
         if filename is None:
             filename = self.picklefile
-        histories = (self.L0acts,self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory)
+        histories = (self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory)
         rates = (self.alpha, self.beta, self.gamma)
         with open(filename,'wb') as f:
             pickle.dump([self.Q, self.W, self.theta, rates, histories], f)
@@ -327,7 +314,7 @@ class SAILnet(DictLearner):
         try:
             try:
                 self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
-                assert len(self.L1acts) < 2
+                assert len(self.L1acts.shape) < 2
             except AssertionError:
                 self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory, usage = histories
                 self.L0acts = usage
@@ -385,3 +372,21 @@ class SAILnet(DictLearner):
         s = self.infer(X, infplot=True)
         print("Final SNR: " + str(self.snr(X,s)))
         return s
+        
+    def pairwisedot(self, acts=None):
+        pairdots = []
+        if acts is None:
+            for i in range(self.nunits):
+                for j in range(i,self.nunits):
+                    pairdots.append(self.Q[i].dot(self.Q[j]))
+            return pairdots
+        # if acts is provided, only return pairwise dot products for coactive units in a batch
+        for it in range(self.batch_size):
+            itacts = acts[:,it]
+            itdots = []
+            for unit in range(self.nunits):
+                if itacts[unit] >0:
+                    for other in range(unit,self.nunits):
+                        if itacts[other] > 0:
+                            pairdots.append(self.Q[unit].dot(self.Q[other]))
+        return pairdots

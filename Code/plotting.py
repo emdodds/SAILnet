@@ -26,9 +26,10 @@ class Plotter(object):
         
         plt.subplot(2,2,2)
         C = net.corrmatrix_ave - np.outer(net.L1acts, net.L1acts)
+        C = C - np.diag(np.diag(C))
         plt.imshow(C, cmap = "gray", interpolation="nearest",aspect = 'auto')
         plt.colorbar()
-        plt.title("Moving time-averaged correlation")
+        plt.title("Moving time-averaged covariance matrix")
         
         plt.subplot(2,2,3)
         # The first point is usually huge compared to everything else, so just ignore it
