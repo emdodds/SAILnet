@@ -286,8 +286,8 @@ class SAILnet(DictLearner):
         Normalized by largest rate."""
         errorterm = np.mean(self.compute_errors(acts, X))
         rateterm = -np.mean((acts-self.p)*self.theta[:,np.newaxis])
-        corrWmatrix = acts.T.dot(self.W).dot(acts)
-        corrterm = -(1/acts.shape[1]**2)*np.trace(corrWmatrix) + np.sum(self.W)*self.p**2
+        corrWmatrix = (acts-self.p).T.dot(self.W).dot(acts-self.p)
+        corrterm = -(1/acts.shape[1]**2)*np.trace(corrWmatrix)
         return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)/max(self.alpha, self.beta, self.gamma, 1e-10)
           
     def save_params(self, filename=None):
