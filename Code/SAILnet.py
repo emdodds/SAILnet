@@ -281,14 +281,21 @@ class SAILnet(DictLearner):
         """Display visualizations of network parameters."""
         self.plotter.visualize()
         
+        
+       # TODO: this is a duplicate from DictLearner, a hack to deal with an inheritance issue I don't understand 
+    def compute_errors(self, acts, X):
+        """Given a batch of data and activities, compute the squared error between
+        the generative model and the original data. Returns vector of mean squared errors."""
+        diffs = X - self.generate_model(acts)
+        return np.mean(diffs**2,axis=0)/np.mean(X**2,axis=0)
+        
     def compute_objective(self, acts, X):
-        """Compute value of objective function/Lagrangian averaged over batch.
-        Normalized by largest rate."""
+        """Compute value of objective function/Lagrangian averaged over batch."""
         errorterm = np.mean(self.compute_errors(acts, X))
-        rateterm = -np.mean((acts-self.p)*self.theta[:,np.newaxis])
+        rateterm = np.mean((acts-self.p)*self.theta[:,np.newaxis])
         corrWmatrix = (acts-self.p).T.dot(self.W).dot(acts-self.p)
-        corrterm = -(1/acts.shape[1]**2)*np.trace(corrWmatrix)
-        return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)/max(self.alpha, self.beta, self.gamma, 1e-10)
+        corrterm = (1/acts.shape[1]**2)*np.trace(corrWmatrix)
+        return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)
           
     def save_params(self, filename=None):
         """
