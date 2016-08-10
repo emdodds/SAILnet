@@ -269,7 +269,7 @@ class SAILnet(DictLearner):
             filename = self.paramfile
         histories = (self.L0acts, self.L1acts, self.L2acts, self.L0hist,
                      self.L1hist, self.L2hist, self.corrmatrix_ave,
-                     self.errorhistory, self.objhistory)
+                     self.errorhist, self.objhistory)
         rates = (self.alpha, self.beta, self.gamma)
         with open(filename,'wb') as f:
             pickle.dump([self.Q, self.W, self.theta, rates, histories], f)
@@ -285,22 +285,22 @@ class SAILnet(DictLearner):
         try:
             (self.L0acts, self.L1acts, self.L2acts, self.L0hist,
                      self.L1hist, self.L2hist, self.corrmatrix_ave,
-                     self.errorhistory, self.objhistory) = histories
+                     self.errorhist, self.objhistory) = histories
         except:
             # older files don't have as many statistics saved
             try:
                 try:
-                    self.L0acts, self.L1acts, self.L2acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                    self.L0acts, self.L1acts, self.L2acts, self.corrmatrix_ave, self.errorhist, self.objhistory = histories
                 except ValueError:
                     print("Loading old file. Some statistics unavailable.")
                     try:
-                        self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                        self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhist, self.objhistory = histories
                         assert len(self.L1acts.shape) < 2
                     except AssertionError:
-                        self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory, usage = histories
+                        self.L1acts, self.corrmatrix_ave, self.errorhist, self.objhistory, usage = histories
                         self.L0acts = usage
             except ValueError:
-                self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                self.L1acts, self.corrmatrix_ave, self.errorhist, self.objhistory = histories
         self.alpha, self.beta, self.gamma = rates
         self.paramfile = filename
             
