@@ -26,15 +26,15 @@ savesuffix = args.savesuffix
 load = args.load
 
 if data == 'images':
-    datafile = '../vision/Data/IMAGES.mat'
+    datafile = '../../vision/Data/IMAGES.mat'
     numinput = 256
     numunits = int(oc*numinput)
     data = io.loadmat(datafile)["IMAGES"]
     if resultsfolder == '':
-        resultsfolder = '../vision/Results/'
+        resultsfolder = '../../vision/Results/'
     net = SAILnet.SAILnet(data=data, nunits = numunits)
 elif data == 'spectros':
-    datafile = '../audition/Data/speech_ptwisecut'
+    datafile = '../../audition/Data/speech_ptwisecut'
     numinput = 200
     numunits = int(oc*numinput)    
     with open(datafile+'_pca.pickle', 'rb') as f:
@@ -42,7 +42,7 @@ elif data == 'spectros':
     data = np.load(datafile+'.npy')
     data = data/data.std()
     if resultsfolder == '':
-        resultsfolder = '../audition/Results/'       
+        resultsfolder = '../../audition/Results/'       
     net = SAILnet.SAILnet(data=data, ninput = numinput, nunits=numunits,
                           datatype="spectro", pca = mypca,  stimshape=origshape)
 
