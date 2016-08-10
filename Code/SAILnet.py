@@ -19,10 +19,8 @@ simple cell receptive fields", PLoS Computational Biology 7(10).
 
 import numpy as np
 import scipy.io
-import matplotlib.pyplot as plt
 import pickle
 from DictLearner import DictLearner
-import StimSet
 import plotting
 
 class SAILnet(DictLearner):
@@ -48,7 +46,7 @@ class SAILnet(DictLearner):
                  theta0 = 0.5,
                  infrate = 0.1,
                  moving_avg_rate = 0.001,
-                 picklefile = 'SAILnetparams.pickle',
+                 paramfile = 'SAILnetparams.pickle',
                  pca = None):
         """
         Create SAILnet object with given parameters. 
@@ -75,7 +73,7 @@ class SAILnet(DictLearner):
         theta0:             initial value of thresholds
         infrate:            rate parameter for inference with LIF circuit
         moving_avg_rate:    rate parameter for computing moving averages to get activity stats
-        picklefile:         File in which to save pickled parameters.
+        paramfile:         File in which to save pickled parameters.
         pca:                PCA object used to create vector inputs.
                             Used here to reconstruct spectrograms for display.
                             
@@ -107,33 +105,20 @@ class SAILnet(DictLearner):
         self.niter = niter
         self.delay = delay
         self.nunits = nunits # M in original MATLAB code
-        self.picklefile = picklefile
+        self.paramfile = paramfile
         self.pca = pca
         self.plotter = plotting.Plotter(self)
         
-        # size of patches
+        # size of inputs to network
         self.ninput = ninput # N in original MATLAB code
-        if stimshape is None:
-            linput = np.sqrt(self.ninput)
-            stimshape = (int(linput), int(linput))
-            if linput != stimshape[0]:
-                raise ValueError("Input size not a perfect square. Please provide image shape.")
             
-        if datatype == "spectro":
-            self.stims = StimSet.PCvecSet(data, stimshape, self.pca, self.batch_size)
-        elif datatype == "image":
-            self.stims = StimSet.ImageSet(data, batch_size=batch_size, buffer=buffer, stimshape=stimshape)
-        else:
-            raise ValueError("Specified data type not supported. Supported types are image \
-            and spectro. For vectors of PC coefficients, input the \
-            PCA object used to create the PC projections.")
+        self._load_stims(data, datatype, stimshape, pca)
                 
         self.initialize(theta0)
         
         
     def initialize(self, theta0=0.5):
         """Initialize or reset weights, averages, histories."""
-        # initialize network parameters
         # Q are feedfoward weights (i.e. from input units to output units)
         # W are horizontal conections (among 'output' units)
         # theta are thresholds for the LIF neurons
@@ -142,13 +127,10 @@ class SAILnet(DictLearner):
         self.theta = theta0*np.ones(self.nunits)        
         
         # initialize average activity stats
+        self.initialize_stats()
         self.corrmatrix_ave = self.p**2
-        self.L0acts = np.zeros(self.nunits)
-        self.L1acts = np.zeros(self.nunits)
         
-        #initialize history of objective function
         self.objhistory = np.array([])
-        self.errorhistory = np.array([])
       
     def infer(self, X, infplot = False, savestr = None):
         """
@@ -207,7 +189,7 @@ class SAILnet(DictLearner):
         dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
         self.Q = self.Q + self.beta*dQ/self.batch_size        
         
-        #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity # TODO: REMOVE REMOVE REMOVE REMOVE REMOVE
+        #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity
         #corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size
 
         # update lateral weights with Foldiak's rule 
@@ -227,60 +209,40 @@ class SAILnet(DictLearner):
         Run SAILnet for ntrials: for each trial, create a random set of image
         patches, present each to the network, and update the network weights
         after each set of batch_size presentations.
-        The learning rates area all multiplied by the factor rate_decay after each trial.
+        The learning rates are all multiplied by the factor rate_decay after each trial.
         """
         for t in range(ntrials):
-            # make data array X from random pieces of total data
             X = self.stims.rand_stim()
             
-            # compute activities for this data array
             acts = self.infer(X)
             
-            # compute statistics for this batch
-            meanact = np.mean(acts,1)
-            corrmatrix = np.dot(acts, acts.T)/self.batch_size 
+            corrmatrix = self.store_statistics(acts, np.mean(self.compute_errors(acts, X)))
+            self.objhistory = np.append(self.objhistory, 
+                                            self.compute_objective(acts,X))
             
-            # update weights and thresholds according to learning rules
             self.learn(X, acts, corrmatrix)
             
-            # compute moving averages of activities and corrmatrix
-            self.corrmatrix_ave = (1 - self.moving_avg_rate)*self.corrmatrix_ave + self.moving_avg_rate*corrmatrix
-            self.L1acts = (1-self.moving_avg_rate)*self.L1acts + self.moving_avg_rate*meanact
-            L0means = np.mean(acts != 0,axis=1).astype('float32')
-            self.L0acts = (1-self.moving_avg_rate)*self.L0acts + self.moving_avg_rate*L0means
-                
-            # save statistics every 50 trials
-            if t % 50 == 0:
-                # Compute and save current value of objective function
-                self.objhistory = np.append(self.objhistory, 
-                                            self.compute_objective(acts,X))
-                self.errorhistory = np.append(self.errorhistory, 
-                                              np.mean(self.compute_errors(acts, X)))
-                
+            if t % 50 == 0:        
                 print("Trial number: " + str(t))
                 if t % 5000 == 0:
                     # save progress
                     print("Saving progress...")
-                    self.save_params()
+                    self.save()
                     print("Done. Continuing to run...")
             
-            # adjust rates
             self.adjust_rates(rate_decay)
             
-        # Save final parameter values            
-        self.save_params()              
+        self.save()              
         
     def set_dot_inhib(self):
         """Sets each inhibitory weight to the dot product of the corresponding units' feedforward weights."""
         self.W = self.Q.dot(self.Q.T) 
         self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
-        self.W[self.W < 0] = 0 # force weights to be inhibitory
-        
+        self.W[self.W < 0] = 0 # force weights to be inhibitory        
      
     def visualize(self):
         """Display visualizations of network parameters."""
-        self.plotter.visualize()
-        
+        self.plotter.visualize()  
         
        # TODO: this is a duplicate from DictLearner, a hack to deal with an inheritance issue I don't understand 
     def compute_errors(self, acts, X):
@@ -297,38 +259,50 @@ class SAILnet(DictLearner):
         corrterm = (1/acts.shape[1]**2)*np.trace(corrWmatrix)
         return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)
           
-    def save_params(self, filename=None):
+    def save(self, filename=None):
         """
         Save parameters to a pickle file, to be picked up later. By default
         we save to the file name stored with the SAILnet instance, but a different
         file can be passed in as the string filename. This filename is then saved.
         """
         if filename is None:
-            filename = self.picklefile
-        histories = (self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory)
+            filename = self.paramfile
+        histories = (self.L0acts, self.L1acts, self.L2acts, self.L0hist,
+                     self.L1hist, self.L2hist, self.corrmatrix_ave,
+                     self.errorhistory, self.objhistory)
         rates = (self.alpha, self.beta, self.gamma)
         with open(filename,'wb') as f:
             pickle.dump([self.Q, self.W, self.theta, rates, histories], f)
-        self.picklefile = filename
+        self.paramfile = filename
 
-    def load_params(self, filename = None):
+    def load(self, filename = None):
         """Load parameters (e.g., weights) from a previous run from pickle file.
         This pickle file is then associated with this instance of SAILnet."""
         if filename is None:
-            filename = self.picklefile
+            filename = self.paramfile
         with open(filename, 'rb') as f:
             self.Q, self.W, self.theta, rates, histories = pickle.load(f)  
         try:
+            (self.L0acts, self.L1acts, self.L2acts, self.L0hist,
+                     self.L1hist, self.L2hist, self.corrmatrix_ave,
+                     self.errorhistory, self.objhistory) = histories
+        except:
+            # older files don't have as many statistics saved
             try:
-                self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
-                assert len(self.L1acts.shape) < 2
-            except AssertionError:
-                self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory, usage = histories
-                self.L0acts = usage
-        except ValueError:
-            self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                try:
+                    self.L0acts, self.L1acts, self.L2acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                except ValueError:
+                    print("Loading old file. Some statistics unavailable.")
+                    try:
+                        self.L0acts, self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
+                        assert len(self.L1acts.shape) < 2
+                    except AssertionError:
+                        self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory, usage = histories
+                        self.L0acts = usage
+            except ValueError:
+                self.L1acts, self.corrmatrix_ave, self.errorhistory, self.objhistory = histories
         self.alpha, self.beta, self.gamma = rates
-        self.picklefile = filename
+        self.paramfile = filename
             
     def adjust_rates(self, factor):
         """Multiply all the learning rates (alpha, beta, gamma) by the given factor."""
@@ -359,20 +333,9 @@ class SAILnet(DictLearner):
         self.sort(self.L0acts, sorter, plot, savestr)
             
     def sort(self, usage, sorter, plot=False, savestr=None):
-        self.Q = self.Q[sorter]
-        self.W = self.W[sorter]
-        self.W = self.W.T[sorter].T
+        super().sort(usage, sorter, plot, savestr)
+        self.W = self.W[sorter, sorter]
         self.theta = self.theta[sorter]
-        self.L0acts = self.L0acts[sorter]
-        self.L1acts = self.L1acts[sorter]
-        self.corrmatrix_ave = self.corrmatrix_ave[sorter]
-        self.corrmatrix_ave = self.corrmatrix_ave.T[sorter].T
-        if plot:
-            plt.figure()
-            plt.plot(usage[sorter])
-            plt.title('Mean L0 activity for each unit, sorted')
-            if savestr is not None:
-                plt.savefig(savestr, bbox_inches='tight')
                 
     def test_inference(self):
         X = self.stims.rand_stim()

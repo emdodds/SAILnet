@@ -10,8 +10,8 @@ import numpy as np
 
 parser = argparse.ArgumentParser(description="Learn dictionaries for LCA with given parameters.")
 parser.add_argument('-o', '--overcompleteness', default=4, type=float)
-parser.add_argument('-d', '--datafile', default='../audition/Data/speech_ptwisecut', type=str)
-parser.add_argument('-r', '--resultsfolder', default='../audition/Results/',type=str)
+parser.add_argument('-d', '--datafile', default='../../audition/Data/speech_ptwisecut', type=str)
+parser.add_argument('-r', '--resultsfolder', default='../../audition/Results/',type=str)
 parser.add_argument('-s', '--datasuffix', default='ptwise', type=str)
 parser.add_argument('-p', '--p', default=0.05, type=float)
 args=parser.parse_args()
