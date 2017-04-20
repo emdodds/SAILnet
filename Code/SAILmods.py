@@ -8,9 +8,11 @@ Created on Sat May 14 19:43:16 2016
 import SAILnet
 import numpy as np
 
+
 class VarTimeSAILnet(SAILnet.SAILnet):
-    """SAILnet with a rate code (as opposed to a count code) and variable inference time."""
-    def __init__(self, inftime=5, infrate = 0.1, **kwargs):
+    """SAILnet with a rate code (as opposed to a count code)
+    and variable inference time."""
+    def __init__(self, inftime=5, infrate=0.1, **kwargs):
         """Args:
         inftime: inference time in time-constants of the circuit
         infrate: integration step size, also duration of a spike
@@ -20,84 +22,84 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         self.gain = 1
         niter = int(np.ceil(self.inftime/infrate))
         super().__init__(niter=niter, **kwargs)
-        
+
     def compute_gain(self, X, acts):
-        dots = self.Q @ X
-        maxacts = np.max(acts, axis=0)
-        maxdots = np.max(dots, axis=0)
-        return maxdots.mean()/maxacts.mean()
-        
+        # dots = self.Q @ X
+        # maxacts = np.max(acts, axis=0)
+        # maxdots = np.max(dots, axis=0)
+        # return maxdots.mean()/maxacts.mean()
+        recon = self.generate_model(acts)
+        return np.mean(X**2) / np.mean(recon**2)
+
     def learn(self, X, acts, corrmatrix):
         """Use learning rules to update network parameters."""
-        
-        # update feedforward weights with Oja's rule
-        sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
-        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
-        self.Q = self.Q + self.beta*dQ/self.batch_size        
-        
-        #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity
-        #corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size
 
-        # update lateral weights with Foldiak's rule 
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts, 1)  # square, then sum over images
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+
+        # update lateral weights with Foldiak's rule
         # (inhibition for decorrelation)
         dW = self.alpha*(corrmatrix - self.p**2)
         self.W = self.W + dW
-        self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
-        self.W[self.W < 0] = 0 # force weights to be inhibitory
-        
+        self.W = self.W - np.diag(np.diag(self.W))  # zero diagonal entries
+        self.W[self.W < 0] = 0  # force weights to be inhibitory
+
         # update thresholds with Foldiak's rule: keep firing rates near target
-        dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
+        dtheta = self.gamma*(np.sum(acts, 1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
-        
-        self.gain = self.gain*self.compute_gain(X, acts)**self.beta
-        
+
+        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.beta
+
     def infer(self, X, infplot=False, savestr=None):
         """
-        Simulate LIF neurons to get spike counts. Optionally plot mean square reconstruction error vs time.
+        Simulate LIF neurons to get spike counts.
+        Optionally plot mean square reconstruction error vs time.
         X:        input array
         Q:        feedforward weights
         W:        horizontal weights
         theta:    thresholds
         y:        outputs
         """
-        
-        nstim = X.shape[-1]        
-        
-        # projections of stimuli onto feedforward weights
-        B = np.dot(self.Q,X)
+        nstim = X.shape[-1]
 
-        # initialize values. Note that I've renamed some variables compared to 
-        # Zylberberg's code. My variable names more closely follow the paper instead.
-        u = np.zeros((self.nunits, nstim)) # internal unit variables
-        y = np.zeros((self.nunits, nstim)) # external unit variables
-        acts = np.zeros((self.nunits, nstim)) # counts of total firings
-        
+        # projections of stimuli onto feedforward weights
+        B = np.dot(self.Q, X)
+
+        # initialize values. Note that I've renamed some variables compared to
+        # Zylberberg's code. My variable names more closely follow the paper
+        u = np.zeros((self.nunits, nstim))  # internal unit variables
+        y = np.zeros((self.nunits, nstim))  # external unit variables
+        acts = np.zeros((self.nunits, nstim))  # counts of total firings
+
         if infplot:
             errors = np.zeros(self.niter)
             yhist = np.zeros((self.niter))
-        
+
         for t in range(self.niter):
             # DE for internal variables
             u = (1.-self.infrate)*u + self.infrate*(B - 2*self.W.dot(y))
-            
-            # external variables should spike when internal variables cross threshholds
-            y = np.array([u[:,ind] >= self.theta for ind in range(nstim)])
+
+            # external variables spike when internal variables cross thresholds
+            y = np.array([u[:, ind] >= self.theta for ind in range(nstim)])
             y = y.T
 
             acts = acts + y
-            
+
             if infplot:
-                errors[t] = np.mean(self.compute_errors(self.gain*acts/((t+1)*self.infrate), X))
+                recon_t = self.gain*acts/((t+1)*self.infrate)
+                errors[t] = np.mean(self.compute_errors(recon_t, X))
                 yhist[t] = np.mean(y)
-            
+
             # reset the internal variables of the spiking units
             u = u*(1-y)
-        
+
         if infplot:
             self.plotter.inference_plots(errors, yhist, savestr=savestr)
-        
+
         return self.gain*acts/self.inftime
-        
+
 class NLnet(VarTimeSAILnet):
     """Uses nonlocal learning rule. Inference is VarTimeSAILnet inference."""
     def learn(self, X, acts, corrmatrix):
