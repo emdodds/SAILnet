@@ -17,8 +17,39 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         all other arguments same as SAILnet, use keywords
         """
         self.inftime = inftime
+        self.gain = 1
         niter = int(np.ceil(self.inftime/infrate))
         super().__init__(niter=niter, **kwargs)
+        
+    def compute_gain(self, X, acts):
+        dots = self.Q @ X
+        maxacts = np.max(acts, axis=0)
+        maxdots = np.max(dots, axis=0)
+        return maxdots.mean()/maxacts.mean()
+        
+    def learn(self, X, acts, corrmatrix):
+        """Use learning rules to update network parameters."""
+        
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size        
+        
+        #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity
+        #corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size
+
+        # update lateral weights with Foldiak's rule 
+        # (inhibition for decorrelation)
+        dW = self.alpha*(corrmatrix - self.p**2)
+        self.W = self.W + dW
+        self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
+        self.W[self.W < 0] = 0 # force weights to be inhibitory
+        
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+        
+        self.gain = self.gain*self.compute_gain(X, acts)**self.beta
         
     def infer(self, X, infplot=False, savestr=None):
         """
@@ -56,7 +87,7 @@ class VarTimeSAILnet(SAILnet.SAILnet):
             acts = acts + y
             
             if infplot:
-                errors[t] = np.mean(self.compute_errors(acts/(t*self.infrate), X))
+                errors[t] = np.mean(self.compute_errors(self.gain*acts/((t+1)*self.infrate), X))
                 yhist[t] = np.mean(y)
             
             # reset the internal variables of the spiking units
@@ -65,7 +96,7 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         if infplot:
             self.plotter.inference_plots(errors, yhist, savestr=savestr)
         
-        return acts/self.inftime
+        return self.gain*acts/self.inftime
         
 class NLnet(VarTimeSAILnet):
     """Uses nonlocal learning rule. Inference is VarTimeSAILnet inference."""

@@ -33,7 +33,7 @@ class Plotter(object):
         
         plt.subplot(2,2,3)
         # The first point is usually huge compared to everything else, so just ignore it
-        plt.plot(net.objhistory[1:],'b', net.errorhistory[1:], 'g')
+        plt.plot(net.objhistory[1:],'b', net.errorhist[1:], 'g')
         plt.title("History of objective function (blue) and mean squared error")
         
         plt.subplot(2,2,4)
