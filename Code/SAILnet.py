@@ -237,18 +237,6 @@ class SAILnet(DictLearner):
         return (errorterm*self.beta/2 + rateterm*self.gamma +
                 corrterm*self.alpha)
 
-    def get_param_list(self):
-        return {'alpha': self.alpha,
-                'beta': self.beta,
-                'gamma': self.gamma,
-                'W': self.W,
-                'theta': self.theta,
-                'nunits': self.nunits,
-                'batch_size': self.batch_size,
-                'paramfile': self.paramfile,
-                'niter': self.niter,
-                'infrate': self.infrate}
-
     def adjust_rates(self, factor):
         """Multiply all the learning rates (alpha, beta, gamma) by factor."""
         self.alpha = factor*self.alpha
@@ -302,6 +290,27 @@ class SAILnet(DictLearner):
                         if itacts[other] > 0:
                             pairdots.append(self.Q[unit].dot(self.Q[other]))
         return pairdots
+
+    def get_param_list(self):
+        return {'alpha': self.alpha,
+                'beta': self.beta,
+                'gamma': self.gamma,
+                'W': self.W,
+                'theta': self.theta,
+                'nunits': self.nunits,
+                'batch_size': self.batch_size,
+                'paramfile': self.paramfile,
+                'niter': self.niter,
+                'infrate': self.infrate}
+
+    def get_histories(self):
+        histories = super().get_histories()
+        histories['objhistory'] = self.objhistory
+        return histories
+
+    def set_histories(self, histories):
+        super().set_histories(histories)
+        self.objhistory = histories['objhistory']
 
     # legacy code for convenience loading old pickle files
     def _old_save(self, filename=None):

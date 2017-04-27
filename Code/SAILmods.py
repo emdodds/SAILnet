@@ -19,7 +19,7 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         all other arguments same as SAILnet, use keywords
         """
         self.inftime = inftime
-        self.gain = 1
+        self.gain = 1.0
         niter = int(np.ceil(self.inftime/infrate))
         super().__init__(niter=niter, **kwargs)
 
@@ -99,6 +99,12 @@ class VarTimeSAILnet(SAILnet.SAILnet):
             self.plotter.inference_plots(errors, yhist, savestr=savestr)
 
         return self.gain*acts/self.inftime
+
+    def get_param_list(self):
+        params = super().get_param_list()
+        params['gain'] = self.gain
+        return params
+
 
 class NLnet(VarTimeSAILnet):
     """Uses nonlocal learning rule. Inference is VarTimeSAILnet inference."""

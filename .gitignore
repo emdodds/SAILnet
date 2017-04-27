@@ -7,3 +7,6 @@ _*
 Notes
 *sandbox*
 Notes
+Notebooks*
+*.ipynb
+*.pickle
