@@ -14,14 +14,14 @@ datatype = args.data
 oc = 6
 
 if datatype == 'images':
-    wholeims = io.loadmat('../../../vision/Data/IMAGES_vh.mat')['IMAGES']
+    wholeims = io.loadmat('../../vision/Data/IMAGES_vh.mat')['IMAGES']
     wholeims /= wholeims.std()
     numinput = 256
     numunits = numinput*oc
     net = SAILmods.VarTimeSAILnet(data=wholeims, nunits=numunits, theta0=2.5,
                                   paramfile='scaledSAIL_bvh_6oc.pickle')
 elif datatype == 'spectro':
-    datafile = '../Data/allTIMIT'
+    datafile = '../../audition/Data/allTIMIT'
     numinput = 200
     with open(datafile+'_pca.pickle', 'rb') as f:
         mypca, origshape = pickle.load(f)
@@ -30,6 +30,7 @@ elif datatype == 'spectro':
     numunits = numinput = oc
     net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits,
                                   datatype='spectro',
+                                  pca=mypca,
                                   stimshape=origshape, ninput=numinput,
                                   theta0=2.5,
                                   paramfile='scaledSAIL_allTIMIT_6oc.pickle')
