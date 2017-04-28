@@ -11,16 +11,32 @@ parser.add_argument('-d', '--data', default='images', type=str)
 args = parser.parse_args()
 datatype = args.data
 
-oc = 6
 
 if datatype == 'images':
+    oc = 8
     wholeims = io.loadmat('../../vision/Data/IMAGES_vh.mat')['IMAGES']
     wholeims /= wholeims.std()
     numinput = 256
     numunits = numinput*oc
-    net = SAILmods.VarTimeSAILnet(data=wholeims, nunits=numunits, theta0=2.5,
-                                  paramfile='scaledSAIL_bvh_6oc.pickle')
+    net = SAILmods.VarTimeSAILnet(data=wholeims, nunits=numunits,
+                                  paramfile='scaledSAIL_bvh_8oc.pickle')
+elif datatype == 'pcaimages':
+    oc = 10
+    datafile = '../../vision/Data/300kvanHateren'
+    numinput = 200
+    with open(datafile+'PCA', 'rb') as f:
+        mypca, origshape = pickle.load(f)
+    data = np.load(datafile+'200.npy')
+    data = data/data.std()
+    numunits = numinput = oc
+    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits,
+                                  datatype='image',
+                                  pca=mypca,
+                                  stimshape=origshape, ninput=numinput,
+                                  paramfile='scaledSAIL_pcavh_10oc.pickle')
+
 elif datatype == 'spectro':
+    oc = 10
     datafile = '../../audition/Data/allTIMIT'
     numinput = 200
     with open(datafile+'_pca.pickle', 'rb') as f:
@@ -32,11 +48,12 @@ elif datatype == 'spectro':
                                   datatype='spectro',
                                   pca=mypca,
                                   stimshape=origshape, ninput=numinput,
-                                  theta0=2.5,
-                                  paramfile='scaledSAIL_allTIMIT_6oc.pickle')
+                                  paramfile='scaledSAIL_allTIMIT_10oc.pickle')
 
 net.set_dot_inhib()
 net.p = 0.01
+net.beta = 0.0
+net.run(1000)
 net.beta = 0.001
 net.save()
 
