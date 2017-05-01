@@ -11,14 +11,13 @@ parser.add_argument('-d', '--data', default='images', type=str)
 args = parser.parse_args()
 datatype = args.data
 
-
 if datatype == 'images':
     oc = 8
     wholeims = io.loadmat('../../vision/Data/IMAGES_vh.mat')['IMAGES']
     wholeims /= wholeims.std()
     numinput = 256
     numunits = numinput*oc
-    net = SAILmods.VarTimeSAILnet(data=wholeims, nunits=numunits,
+    net = SAILmods.VarTimeSAILnet(data=wholeims, nunits=numunits, theta0=2.0,
                                   paramfile='scaledSAIL_bvh_8oc.pickle')
 elif datatype == 'pcaimages':
     oc = 10
@@ -29,7 +28,7 @@ elif datatype == 'pcaimages':
     data = np.load(datafile+'200.npy')
     data = data/data.std()
     numunits = numinput = oc
-    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits,
+    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits, theta0=2.0,
                                   datatype='image',
                                   pca=mypca,
                                   stimshape=origshape, ninput=numinput,
@@ -44,7 +43,7 @@ elif datatype == 'spectro':
     data = np.load(datafile+'.npy')
     data = data/data.std()
     numunits = numinput = oc
-    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits,
+    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits, theta0=2.0,
                                   datatype='spectro',
                                   pca=mypca,
                                   stimshape=origshape, ninput=numinput,
@@ -53,7 +52,7 @@ elif datatype == 'spectro':
 net.set_dot_inhib()
 net.p = 0.01
 net.beta = 0.0
-net.run(1000)
+net.run(2000)
 net.beta = 0.001
 net.save()
 
