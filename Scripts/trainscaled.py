@@ -5,11 +5,18 @@ import argparse
 import sys
 sys.path.append('../Code/')
 import SAILmods
+import SAILnet
+
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--scaled', dest='scaled', action='store_true')
+parser.add_argument('--not-scaled', dest='scaled', action='store_false')
 parser.add_argument('-d', '--data', default='images', type=str)
+parser.set_defaults(scaled=True)
 args = parser.parse_args()
 datatype = args.data
+Net = SAILmods.VarTimeSAILnet if args.scaled else SAILnet.SAILnet
+prefix = 'scaled' if args.scaled else ''
 
 if datatype == 'images':
     oc = 8
@@ -17,8 +24,8 @@ if datatype == 'images':
     wholeims /= wholeims.std()
     numinput = 256
     numunits = numinput*oc
-    net = SAILmods.VarTimeSAILnet(data=wholeims, nunits=numunits, theta0=2.0,
-                                  paramfile='scaledSAIL_bvh_8oc.pickle')
+    net = Net(data=wholeims, nunits=numunits, theta0=2.0,
+              paramfile=prefix+'SAIL_bvh_8oc.pickle')
 elif datatype == 'pcaimages':
     oc = 10
     datafile = '../../vision/Data/300kvanHateren'
@@ -28,11 +35,11 @@ elif datatype == 'pcaimages':
     data = np.load(datafile+'200.npy')
     data = data/data.std()
     numunits = numinput = oc
-    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits, theta0=2.0,
-                                  datatype='image',
-                                  pca=mypca,
-                                  stimshape=origshape, ninput=numinput,
-                                  paramfile='scaledSAIL_pcavh_10oc.pickle')
+    net = Net(data=data, nunits=numunits, theta0=2.0,
+              datatype='image',
+              pca=mypca,
+              stimshape=origshape, ninput=numinput,
+              paramfile=prefix+'SAIL_pcavh_10oc.pickle')
 
 elif datatype == 'spectro':
     oc = 10
@@ -43,11 +50,11 @@ elif datatype == 'spectro':
     data = np.load(datafile+'.npy')
     data = data/data.std()
     numunits = numinput = oc
-    net = SAILmods.VarTimeSAILnet(data=data, nunits=numunits, theta0=2.0,
-                                  datatype='spectro',
-                                  pca=mypca,
-                                  stimshape=origshape, ninput=numinput,
-                                  paramfile='scaledSAIL_allTIMIT_10oc.pickle')
+    net = Net(data=data, nunits=numunits, theta0=2.0,
+              datatype='spectro',
+              pca=mypca,
+              stimshape=origshape, ninput=numinput,
+              paramfile=prefix+'scaledSAIL_allTIMIT_10oc.pickle')
 
 net.set_dot_inhib()
 net.p = 0.01
