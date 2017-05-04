@@ -26,7 +26,11 @@ class VarTimeSAILnet(SAILnet.SAILnet):
 
     def compute_gain(self, X, acts):
         recon = self.generate_model(acts)
-        gain = np.mean(X**2) / np.mean(recon**2)
+        denom = np.mean(recon**2)
+        if denom == 0:
+            gain = self.gain
+        else:
+            gain = np.mean(X**2) / np.mean(recon**2)
         # clip gain if it gets too far from 1
         gain = min(gain, 10.0)
         gain = max(gain, 0.1)
