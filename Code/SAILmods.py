@@ -12,7 +12,7 @@ import numpy as np
 class VarTimeSAILnet(SAILnet.SAILnet):
     """SAILnet with a rate code (as opposed to a count code)
     and variable inference time."""
-    def __init__(self, inftime=5, infrate=0.1, **kwargs):
+    def __init__(self, inftime=5, infrate=0.1, gain_rate=0.001, **kwargs):
         """Args:
         inftime: inference time in time-constants of the circuit
         infrate: integration step size, also duration of a spike
@@ -20,16 +20,17 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         """
         self.inftime = inftime
         self.gain = 1.0
+        self.gain_rate = gain_rate
         niter = int(np.ceil(self.inftime/infrate))
         super().__init__(niter=niter, **kwargs)
 
     def compute_gain(self, X, acts):
-        # dots = self.Q @ X
-        # maxacts = np.max(acts, axis=0)
-        # maxdots = np.max(dots, axis=0)
-        # return maxdots.mean()/maxacts.mean()
         recon = self.generate_model(acts)
-        return np.mean(X**2) / np.mean(recon**2)
+        gain = np.mean(X**2) / np.mean(recon**2)
+        # clip gain if it gets too far from 1
+        gain = min(gain, 10.0)
+        gain = max(gain, 0.1)
+        return gain
 
     def learn(self, X, acts, corrmatrix):
         """Use learning rules to update network parameters."""
@@ -50,7 +51,7 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         dtheta = self.gamma*(np.sum(acts, 1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
 
-        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.beta
+        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.gain_rate
 
     def infer(self, X, infplot=False, savestr=None):
         """
