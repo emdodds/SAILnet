@@ -34,7 +34,7 @@ elif datatype == 'pcaimages':
         mypca, origshape = pickle.load(f)
     data = np.load(datafile+'200.npy')
     data = data/data.std()
-    numunits = numinput = oc
+    numunits = numinput*oc
     net = Net(data=data, nunits=numunits, theta0=2.0,
               datatype='image',
               pca=mypca,
@@ -49,7 +49,7 @@ elif datatype == 'spectro':
         mypca, origshape = pickle.load(f)
     data = np.load(datafile+'.npy')
     data = data/data.std()
-    numunits = numinput = oc
+    numunits = numinput*oc
     net = Net(data=data, nunits=numunits, theta0=2.0,
               datatype='spectro',
               pca=mypca,
