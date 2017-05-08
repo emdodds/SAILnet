@@ -11,8 +11,10 @@ import SAILnet
 parser = argparse.ArgumentParser()
 parser.add_argument('--scaled', dest='scaled', action='store_true')
 parser.add_argument('--not-scaled', dest='scaled', action='store_false')
+parser.add_argument('--load', dest='load', action='store_true')
 parser.add_argument('-d', '--data', default='images', type=str)
 parser.set_defaults(scaled=True)
+parser.set_defaults(load=False)
 args = parser.parse_args()
 datatype = args.data
 Net = SAILmods.VarTimeSAILnet if args.scaled else SAILnet.SAILnet
@@ -56,12 +58,15 @@ elif datatype == 'spectro':
               stimshape=origshape, ninput=numinput,
               paramfile=prefix+'scaledSAIL_allTIMIT_10oc.pickle')
 
-net.set_dot_inhib()
-net.p = 0.01
-net.beta = 0.0
-net.run(2000)
-net.beta = 0.001
-net.save()
+if args.load:
+    net.load(net.paramfile)
+else:
+    net.set_dot_inhib()
+    net.p = 0.01
+    net.beta = 0.0
+    net.run(2000)
+    net.beta = 0.001
+    net.save()
 
 net.run(10000)
 net.save()
