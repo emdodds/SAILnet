@@ -111,6 +111,33 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         return params
 
 
+class FreeGainSAILnet(VarTimeSAILnet):
+    """Like VarTimeSAILnet, but the homeostatic rules control the spike
+    counts unscaled by the gain."""
+    def learn(self, X, acts, corrmatrix):
+        """Use learning rules to update network parameters."""
+
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts, 1)  # square, then sum over images
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+
+        # homeostatic rules pay attention to spike rate, regardless of gain
+        acts = acts/self.gain
+        # update lateral weights with Foldiak's rule
+        # (inhibition for decorrelation)
+        dW = self.alpha*(corrmatrix - self.p**2)
+        self.W = self.W + dW
+        self.W = self.W - np.diag(np.diag(self.W))  # zero diagonal entries
+        self.W[self.W < 0] = 0  # force weights to be inhibitory
+
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*(np.sum(acts, 1)/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+
+        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.gain_rate
+
+
 class NLnet(VarTimeSAILnet):
     """Uses nonlocal learning rule. Inference is VarTimeSAILnet inference."""
     def learn(self, X, acts, corrmatrix):
