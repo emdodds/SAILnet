@@ -297,6 +297,7 @@ class SAILnet(DictLearner):
                 'gamma': self.gamma,
                 'W': self.W,
                 'theta': self.theta,
+                'p': self.p,
                 'nunits': self.nunits,
                 'batch_size': self.batch_size,
                 'paramfile': self.paramfile,
