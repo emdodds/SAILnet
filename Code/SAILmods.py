@@ -12,19 +12,22 @@ import numpy as np
 class VarTimeSAILnet(SAILnet.SAILnet):
     """SAILnet with a rate code (as opposed to a count code)
     and variable inference time."""
-    def __init__(self, inftime=5, infrate=0.1, gain_rate=0.001, **kwargs):
+    def __init__(self, inftime=5, infrate=0.1,
+                 gain_rate=0.001, gain=1.0, **kwargs):
         """Args:
         inftime: inference time in time-constants of the circuit
         infrate: integration step size, also duration of a spike
         all other arguments same as SAILnet, use keywords
         """
         self.inftime = inftime
-        self.gain = 1.0
+        self.gain = gain
         self.gain_rate = gain_rate
         niter = int(np.ceil(self.inftime/infrate))
         super().__init__(niter=niter, **kwargs)
 
     def compute_gain(self, X, acts):
+        """Compute gain that would match response variance to input
+        variance, but trimmed if too far from 1."""
         recon = self.generate_model(acts)
         denom = np.mean(recon**2)
         if denom == 0:
@@ -55,7 +58,8 @@ class VarTimeSAILnet(SAILnet.SAILnet):
         dtheta = self.gamma*(np.sum(acts, 1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
 
-        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.gain_rate
+        if self.gain_rate > 0:
+            self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.gain_rate
 
     def infer(self, X, infplot=False, savestr=None):
         """
@@ -122,6 +126,9 @@ class FreeGainSAILnet(VarTimeSAILnet):
         dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
         self.Q = self.Q + self.beta*dQ/self.batch_size
 
+        # update gain
+        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.gain_rate
+
         # homeostatic rules pay attention to spike rate, regardless of gain
         acts = acts/self.gain
         # update lateral weights with Foldiak's rule
@@ -134,8 +141,6 @@ class FreeGainSAILnet(VarTimeSAILnet):
         # update thresholds with Foldiak's rule: keep firing rates near target
         dtheta = self.gamma*(np.sum(acts, 1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
-
-        self.gain = self.gain*(self.compute_gain(X, acts)/self.gain)**self.gain_rate
 
 
 class NLnet(VarTimeSAILnet):
