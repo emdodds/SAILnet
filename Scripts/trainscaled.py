@@ -53,7 +53,22 @@ elif datatype == 'pcaimages':
               stimshape=origshape, ninput=numinput,
               paramfile=prefix+'SAIL_pcavh_10oc.pickle',
               **kwargs)
-
+elif datatype == 'smallpcaimages':
+    oc = 10
+    datafile = '../../vision/Data/bvh16x16_PCAd.npy'
+    numinput = 200
+    with open('bvh_16x16_PCA.pickle', 'rb') as f:
+        mypca, origshape = pickle.load(f)
+    data = np.load(datafile)[:, :numinput]
+    mypca.dim = numinput
+    data /= data.std()
+    numunits = numinput * oc
+    net = Net(data=data, nunits=numunits,
+              datatype='image',
+              pca=mypca,
+              stimshape=origshape, ninput=numinput,
+              paramfile=prefix+'SAIL_16pcavh_10oc.pickle',
+              **kwargs)
 elif datatype == 'spectro':
     oc = 10
     datafile = '../../audition/Data/allTIMIT'
@@ -67,7 +82,7 @@ elif datatype == 'spectro':
               datatype='spectro',
               pca=mypca,
               stimshape=origshape, ninput=numinput,
-              paramfile=prefix+'scaledSAIL_allTIMIT_10oc.pickle',
+              paramfile=prefix+'SAIL_allTIMIT_10oc.pickle',
               **kwargs)
 
 if args.load:
