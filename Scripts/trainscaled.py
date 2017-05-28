@@ -57,7 +57,7 @@ elif datatype == 'smallpcaimages':
     oc = 10
     datafile = '../../vision/Data/bvh16x16_PCAd.npy'
     numinput = 200
-    with open('bvh_16x16_PCA.pickle', 'rb') as f:
+    with open('../../vision/Data/bvh_16x16_PCA.pickle', 'rb') as f:
         mypca, origshape = pickle.load(f)
     data = np.load(datafile)[:, :numinput]
     mypca.dim = numinput
