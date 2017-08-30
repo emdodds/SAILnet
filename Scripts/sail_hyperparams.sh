@@ -1,7 +1,7 @@
 #!/bin/bash -l
 for oc in 1
 do
-    export oc=oc
+    export oc=$oc
     for p in 0.001 0.00316 0.01 0.0316 0.1 0.316
     do
         export p=$p
@@ -15,7 +15,7 @@ done
 export keeponly=--keep_only_error
 for oc in 2 4 8
 do
-    export oc=oc
+    export oc=$oc
     for p in 0.001 0.00316 0.01 0.0316 0.1 0.316
     do
         export p=$p
