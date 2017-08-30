@@ -99,5 +99,5 @@ net.run(100000, rate_decay=0.99999)
 
 if args.keep_only_error:
     error = net.errorhist[-1]
-    np.save(net.paramfile+'mse', error)
+    np.save('hyperparams'+net.paramfile+'mse', error)
     os.remove(net.paramfile)
