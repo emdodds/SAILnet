@@ -10,4 +10,4 @@
 #SBATCH --mem-per-cpu=8G
 
 cd /global/home/users/edodds/SAILnet/Scripts
-python trainscaled.py -g $gain -d smallpcaimages -p $p --oc $oc
+python trainscaled.py -g $gain -d smallpcaimages -p $p --oc $oc $keeponly
