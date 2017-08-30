@@ -40,7 +40,7 @@ if datatype == 'images':
     wholeims = io.loadmat('../../vision/Data/IMAGES_vh.mat')['IMAGES']
     wholeims /= wholeims.std()
     numinput = 256
-    numunits = numinput*args.oc
+    numunits = int(numinput*args.oc)
     net = Net(data=wholeims, nunits=numunits,
               paramfile='bvh'+paramfile,
               **kwargs)
@@ -51,7 +51,7 @@ elif datatype == 'pcaimages':
         mypca, origshape = pickle.load(f)
     data = np.load(datafile+'200.npy')
     data = data/data.std()
-    numunits = numinput*args.oc
+    numunits = int(numinput*args.oc)
     net = Net(data=data, nunits=numunits,
               datatype='image',
               pca=mypca,
@@ -66,7 +66,7 @@ elif datatype == 'smallpcaimages':
     data = np.load(datafile)[:, :numinput]
     mypca.dim = numinput
     data /= data.std()
-    numunits = numinput * args.oc
+    numunits = int(numinput * args.oc)
     net = Net(data=data, nunits=numunits,
               datatype='image',
               pca=mypca,
@@ -80,7 +80,7 @@ elif datatype == 'spectro':
         mypca, origshape = pickle.load(f)
     data = np.load(datafile+'.npy')
     data = data/data.std()
-    numunits = numinput*args.oc
+    numunits = int(numinput*args.oc)
     net = Net(data=data, nunits=numunits,
               datatype='spectro',
               pca=mypca,
@@ -99,5 +99,5 @@ net.run(100000, rate_decay=0.99999)
 
 if args.keep_only_error:
     error = net.errorhist[-1]
-    np.save('hyperparams'+net.paramfile+'mse', error)
+    np.save('hyperparams/'+net.paramfile+'mse', error)
     os.remove(net.paramfile)
