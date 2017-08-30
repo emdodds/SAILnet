@@ -12,7 +12,7 @@ import SAILnet
 parser = argparse.ArgumentParser()
 parser.add_argument('--scaled', dest='scaled', action='store_true')
 parser.add_argument('--not-scaled', dest='scaled', action='store_false')
-parser.add_argument('-g', 'gain', default=2, type=float)
+parser.add_argument('-g', '--gain', default=2, type=float)
 parser.add_argument('--load', dest='load', action='store_true')
 parser.add_argument('-d', '--data', default='images', type=str)
 parser.add_argument('-p', '--firing_rate', default=0.05, type=float)
