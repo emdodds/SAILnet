@@ -2,6 +2,9 @@ import numpy as np
 import scipy.io as io
 import pickle
 import argparse
+import os
+import sys
+sys.path.append('../Code/')
 import SAILmods
 import SAILnet
 
@@ -14,6 +17,8 @@ parser.add_argument('--load', dest='load', action='store_true')
 parser.add_argument('-d', '--data', default='images', type=str)
 parser.add_argument('-p', '--firing_rate', default=0.05, type=float)
 parser.add_argument('--oc', default=1, type=float)
+parser.add_argument('--keep_only_error', dest='keep_only_error', action='store_true')
+parser.set_defaults(keep_only_error=False)
 parser.set_defaults(scaled=True)
 parser.set_defaults(load=False)
 args = parser.parse_args()
@@ -91,3 +96,8 @@ else:
 net.run(10000)
 net.save()
 net.run(100000, rate_decay=0.99999)
+
+if args.keep_only_error:
+    error = net.errorhist[-1]
+    np.save(net.paramfile+'mse', error)
+    os.remove(net.paramfile)
