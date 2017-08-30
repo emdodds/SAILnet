@@ -13,10 +13,12 @@ class VarTimeSAILnet(SAILnet.SAILnet):
     """SAILnet with a rate code (as opposed to a count code)
     and variable inference time."""
     def __init__(self, inftime=5, infrate=0.1,
-                 gain_rate=0.001, gain=1.0, **kwargs):
+                 gain_rate=0, gain=1.0, **kwargs):
         """Args:
         inftime: inference time in time-constants of the circuit
         infrate: integration step size, also duration of a spike
+        gain: controls the magnitude of a spike
+        gain_rate: rate at which to update gain to optimize reconstrution
         all other arguments same as SAILnet, use keywords
         """
         self.inftime = inftime
@@ -231,3 +233,193 @@ class LCAILnet(SAILnet.SAILnet):
         dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
         self.theta[self.theta<0] = 0
+
+
+class MirrorSAIL(SAILnet.SAILnet):
+    """SAILnet but each unit has a partner with the opposite feedforward weights."""
+    def initialize(self, theta0=0.5):
+        """Initialize or reset weights, averages, histories."""
+        # initialize network parameters
+        # Q are feedfoward weights (i.e. from input units to output units)
+        # W are horizontal conections (among 'output' units)
+        # theta are thresholds for the LIF neurons
+        self.Q = self.rand_dict()
+        self.W = np.zeros((2*self.nunits, 2*self.nunits))
+        self.theta = theta0*np.ones(self.nunits)
+        self.thetam = theta0*np.ones(self.nunits)
+
+        # initialize average activity stats
+        self.nunits = 2*self.nunits
+        self.initialize_stats()
+        self.nunits = int(self.nunits/2)
+        self.corrmatrix_ave = self.p**2
+        self.objhistory = np.array([])
+    
+    def infer(self, X, infplot = False, savestr = None):
+        """
+        Simulate LIF neurons to get spike counts. Optionally plot mean square reconstruction error vs time.
+        X:        input array
+        Q:        feedforward weights
+        W:        horizontal weights
+        theta:    thresholds
+        y:        outputs
+        """
+        
+        nstim = X.shape[-1] 
+        ndict = self.Q.shape[0]
+        
+        # projections of stimuli onto feedforward weights
+        B = np.dot(self.Q,X)
+
+        # initialize values. Note that I've renamed some variables compared to 
+        # Zylberberg's code. My variable names more closely follow the paper instead.
+        u = np.zeros((self.nunits, nstim)) # internal unit variables
+        um = np.zeros_like(u)
+        y = np.zeros_like(u) # external unit variables
+        ym = np.zeros_like(u)
+        acts = np.zeros_like(u) # counts of total firings
+        actsm = np.zeros_like(u)
+        
+        if infplot:
+            errors = np.zeros(self.niter)
+            yhist = np.zeros((self.niter))
+        
+        for t in range(self.niter):
+            # DE for internal variables
+            u = (1.-self.infrate)*u + self.infrate*(B - 2*self.W[:ndict,:ndict].dot(y) - 2*self.W[:ndict,ndict:].dot(ym))
+            um = (1.-self.infrate)*um + self.infrate*(-B -2*self.W[ndict:,:ndict].dot(y) - 2*self.W[ndict:, ndict:].dot(ym))
+            
+            # external variables should spike when internal variables cross threshholds
+            y = np.array([u[:,ind] >= self.theta for ind in range(nstim)])
+            y = y.T
+            ym = np.array([um[:,ind] >= self.thetam for ind in range(nstim)])
+            ym = ym.T
+
+            acts = acts + y
+            actsm = actsm + ym
+            
+            if infplot:
+                errors[t] = np.mean(self.compute_errors(acts,actsm, X))
+                yhist[t] = (np.mean(y) + np.mean(ym))/2
+            
+            # reset the internal variables of the spiking units
+            u = u*(1-y)
+            um = um*(1-ym)
+        
+        if infplot:
+            self.plotter.inference_plots(errors, yhist, savestr=savestr)
+        
+        return acts, actsm
+    
+    def learn(self, X, acts,actsm, corrmatrix):
+        """Use learning rules to update network parameters."""
+        
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts,1) # square, then sum over images
+        sumsquareactsm = np.sum(actsm**2,1)
+        crossterm = np.sum(acts*actsm,1)
+        dQ = (acts-actsm).dot(X.T) - np.diag(sumsquareacts+sumsquareactsm-2*crossterm).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+        
+        #acts = acts > 0 # This and below makes the W and theta rules care about L0 activity # TODO: REMOVE
+        #corrmatrix = np.dot(acts, np.transpose(acts))/self.batch_size
+
+
+        # update lateral weights with Foldiak's rule 
+        # (inhibition for decorrelation)
+        dW = self.alpha*(corrmatrix - self.p**2)
+        self.W = self.W + dW
+        self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
+        self.W[self.W < 0] = 0 # force weights to be inhibitory      
+        
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+        dthetam = self.gamma*(np.sum(actsm,1)/self.batch_size - self.p)
+        self.thetam = self.thetam + dthetam
+        
+    def run(self, ntrials = 25000, rate_decay=1):
+        """
+        Run SAILnet for ntrials: for each trial, create a random set of image
+        patches, present each to the network, and update the network weights
+        after each set of batch_size presentations.
+        The learning rates area all multiplied by the factor rate_decay after each trial.
+        """
+        for t in range(ntrials):
+            # make data array X from random pieces of total data
+            X = self.stims.rand_stim()
+
+            # compute activities for this data array
+            acts, actsm = self.infer(X)
+            allacts = np.concatenate([acts, actsm])
+
+            # compute statistics for this batch
+            errors = np.mean(self.compute_errors(acts, actsm, X))
+            corrmatrix = self.store_statistics(allacts, errors)
+            self.objhistory = np.append(self.objhistory,
+                                        self.compute_objective(acts, actsm, X))
+
+            # update weights and thresholds according to learning rules
+            self.learn(X, acts, actsm, corrmatrix)
+
+            # save statistics every 50 trials
+            if t % 50 == 0:
+                print("Trial number: " + str(t))
+                if t % 5000 == 0:
+                    # save progress
+                    print("Saving progress...")
+                    self.save()
+                    print("Done. Continuing to run...")
+
+            self.adjust_rates(rate_decay)
+
+        self.save()
+
+    def generate_model(self, acts, actsm):
+        """Reconstruct inputs using linear generative model."""
+        return np.dot(self.Q.T, acts) - np.dot(self.Q.T, actsm)
+
+    def compute_errors(self, acts, actsm, X):
+        """Given a batch of data and activities, compute the squared error between
+        the generative model and the original data. Returns vector of mean squared errors."""
+        diffs = X - self.generate_model(acts, actsm)
+        return np.mean(diffs**2, axis=0)
+
+    def compute_objective(self, acts, actsm, X):
+        """Compute value of objective function/Lagrangian averaged over batch."""
+        errorterm = np.sum(self.compute_errors(acts,actsm, X))
+        thetarep = np.repeat(self.theta[:,np.newaxis], self.batch_size,axis=1)
+        rateterm = -np.sum(thetarep*(acts - self.p))
+        thetamrep = np.repeat(self.thetam[:,np.newaxis], self.batch_size,axis=1)
+        rateterm = rateterm - np.sum(thetamrep*(acts - self.p))
+        corrWmatrix = np.dot(np.dot(np.transpose(np.concatenate([acts,actsm])), self.W),np.concatenate([acts,actsm]))
+        corrterm = -(1/self.batch_size)*np.trace(corrWmatrix) + np.sum(self.W)*self.p**2
+        return (errorterm*self.beta/2 + rateterm*self.gamma + corrterm*self.alpha)/self.batch_size
+
+
+class MirrorSignSAIL(MirrorSAIL):
+    """MirrorSAIL but each pair's collective firing rate
+    must be p, rather than each unit's rate.
+    So each pair has one threshold."""
+
+    def learn(self, X, acts, actsm, corrmatrix):
+        """Use learning rules to update network parameters."""
+
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts, 1)
+        sumsquareactsm = np.sum(actsm**2, 1)
+        crossterm = np.sum(acts*actsm, 1)
+        dQ = (acts-actsm).dot(X.T) - np.diag(sumsquareacts+sumsquareactsm-2*crossterm).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+
+        # update lateral weights with Foldiak's rule
+        # (inhibition for decorrelation)
+        dW = self.alpha*(corrmatrix - self.p**2)
+        self.W = self.W + dW
+        self.W = self.W - np.diag(np.diag(self.W))  # zero diagonal entries
+        self.W[self.W < 0] = 0  # force weights to be inhibitory
+
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*((np.sum(acts, 1) + np.sum(actsm, 1))/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+        self.thetam = self.theta

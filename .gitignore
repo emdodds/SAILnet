@@ -10,3 +10,4 @@ Notes
 Notebooks*
 *.ipynb
 *.pickle
+*egg-info*
