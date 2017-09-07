@@ -4,6 +4,7 @@ import pickle
 import argparse
 import os
 import sys
+import StimSet
 sys.path.append('../Code/')
 import SAILmods
 import SAILnet
@@ -44,6 +45,14 @@ if datatype == 'images':
     net = Net(data=wholeims, nunits=numunits,
               paramfile='bvh'+paramfile,
               **kwargs)
+elif datatype == 'fieldraw':
+    wholeims = io.loadmat('../../vision/Data/IMAGES_RAW.mat')['IMAGES']
+    wholeims /= wholeims.std()
+    numinput = 256
+    numunits = int(numinput*args.oc)
+    net = Net(data=wholeims, nunits=numunits,
+              paramfile='fraw'+paramfile,
+              **kwargs)
 elif datatype == 'pcaimages':
     datafile = '../../vision/Data/300kvanHateren'
     numinput = 200
@@ -73,6 +82,35 @@ elif datatype == 'smallpcaimages':
               stimshape=origshape, ninput=numinput,
               paramfile='pca16vh'+paramfile,
               **kwargs)
+elif datatype == 'smallpcaimages_alt':
+    datafile = '../../vision/Data/16x16vanHateren.npy'
+    numinput = 255  # last dim is noise
+    with open('../../vision/Data/16x16vanHaterenPCA.pickle', 'rb') as f:
+        mypca, origshape = pickle.load(f)
+    data = np.load(datafile)[:, :numinput]
+    mypca.dim = numinput
+    data /= data.std()
+    numunits = int(numinput * args.oc)
+    net = Net(data=data, nunits=numunits,
+              datatype='image',
+              pca=mypca,
+              stimshape=origshape, ninput=numinput,
+              paramfile='pca16vhfr'+paramfile,
+              **kwargs)
+elif datatype == 'smallunwhiteims':
+    datafile = '../../vision/Data/16x16vanHateren.npy'
+    with open('../../vision/Data/16x16vanHaterenPCA.pickle', 'rb') as f:
+        mypca, origshape = pickle.load(f)
+    data = np.load(datafile)[:, :numinput]
+    mypca.dim = 256
+    data /= data.std()
+    data = mypca.inverse_transform(data)
+    imset = StimSet.StimSet(data, stimshape=[16, 16], batch_size=100)
+    numinput = 256
+    numunits = int(numinput * args.oc)
+    net = Net(data=imset, nunits=numunits,
+              datatype='image',
+              stimshape=origshape, ninput=numinput, **kwargs)
 elif datatype == 'spectro':
     datafile = '../../audition/Data/allTIMIT'
     numinput = 200
