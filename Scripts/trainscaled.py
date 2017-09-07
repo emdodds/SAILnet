@@ -46,13 +46,14 @@ if datatype == 'images':
               paramfile='bvh'+paramfile,
               **kwargs)
 elif datatype == 'fieldraw':
-    wholeims = io.loadmat('../../vision/Data/IMAGES_RAW.mat')['IMAGES']
+    wholeims = io.loadmat('../../vision/Data/IMAGES_RAW.mat')['IMAGESr']
     wholeims /= wholeims.std()
     numinput = 256
     numunits = int(numinput*args.oc)
     net = Net(data=wholeims, nunits=numunits,
               paramfile='fraw'+paramfile,
               **kwargs)
+    net.stims.patchwisenorm = True
 elif datatype == 'pcaimages':
     datafile = '../../vision/Data/300kvanHateren'
     numinput = 200
