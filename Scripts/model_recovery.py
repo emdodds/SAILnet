@@ -15,15 +15,16 @@ parser.add_argument('--not-scaled', dest='scaled', action='store_false')
 parser.add_argument('-g', '--gain', default=2, type=float)
 parser.add_argument('--load', dest='load', action='store_true')
 parser.add_argument('-w', '--whiten', dest='whiten', action='store_true')
+parser.add_argument('--nonneg', dest='nonneg', action='store_true')
 parser.add_argument('-p', '--firing_rate', default=0.05, type=float)
 parser.add_argument('--oc', default=1, type=float)
-parser.add_argument('--keep_only_fit', dest='keep_only_error', action='store_true')
+parser.add_argument('--keep_only_fit', dest='keep_only_fit', action='store_true')
 parser.set_defaults(keep_only_fit=False)
 parser.set_defaults(scaled=True)
 parser.set_defaults(load=False)
 parser.set_defaults(whiten=False)
+parser.set_defaults(nonneg=False)
 args = parser.parse_args()
-datatype = args.data
 
 kwargs = {'p': args.firing_rate,
           'theta0': 1.5}
@@ -36,14 +37,14 @@ if args.scaled:
 else:
     Net = SAILnet.SAILnet
     prefix = ''
-paramfile = prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
+paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
 
-toy = StimSet.ToySparseSet()
+toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=0.05)
 
 numinput = 200
 numunits = int(numinput*args.oc)
 net = Net(data=toy, nunits=numunits,
-          paramfile='toy'+paramfile,
+          paramfile=paramfile,
           **kwargs)
 
 
