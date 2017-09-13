@@ -78,9 +78,9 @@ def track_fit(net, nsteps=100000, oldfits=None):
                 print("Saving progress...")
                 self.save()
                 print("Done. Continuing to run...")
-                np.save(paramfile+'fit'+'.npy', fit)
+                np.save(net.paramfile+'fit'+'.npy', fit)
     self.save()
-    np.save(paramfile+'fit'+'.npy', fit)
+    np.save(net.paramfile+'fit'+'.npy', fit)
 
     if oldfits is not None:
         return np.concatenate([oldfits, fit])
