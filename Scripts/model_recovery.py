@@ -41,6 +41,10 @@ else:
     Net = SAILnet.SAILnet
     prefix = ''
 paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
+num=0
+while: os.path.exists(paramfile) and not load:
+    paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p'+str(num)+'.pickle'
+    num += 1
 
 kwargs['alpha'] = args.alpha
 kwargs['beta'] = args.beta
@@ -57,17 +61,16 @@ net = Net(data=toy, nunits=numunits,
 
 def track_fit(net, nsteps=100000, oldfits=None):
     fit = np.zeros(nsteps)
-    self = net
     for tt in range(nsteps):
-        X = self.stims.rand_stim()
+        X = net.stims.rand_stim()
 
-        acts = self.infer(X)
-        errors = np.mean(self.compute_errors(acts, X))
-        corrmatrix = self.store_statistics(acts, errors)
-        self.objhistory = np.append(self.objhistory,
-                                    self.compute_objective(acts, X))
+        acts = net.infer(X)
+        errors = np.mean(net.compute_errors(acts, X))
+        corrmatrix = net.store_statistics(acts, errors)
+        net.objhistory = np.append(net.objhistory,
+                                    net.compute_objective(acts, X))
 
-        self.learn(X, acts, corrmatrix)
+        net.learn(X, acts, corrmatrix)
 
         fit[tt] = toy.test_fit(net.Q)
 
@@ -76,10 +79,10 @@ def track_fit(net, nsteps=100000, oldfits=None):
             if tt % 5000 == 0:
                 # save progress
                 print("Saving progress...")
-                self.save()
+                net.save()
                 print("Done. Continuing to run...")
                 np.save(net.paramfile+'fit'+'.npy', fit)
-    self.save()
+    net.save()
     np.save(net.paramfile+'fit'+'.npy', fit)
 
     if oldfits is not None:
