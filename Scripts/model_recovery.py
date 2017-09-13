@@ -19,6 +19,9 @@ parser.add_argument('--nonneg', dest='nonneg', action='store_true')
 parser.add_argument('-p', '--firing_rate', default=0.05, type=float)
 parser.add_argument('--oc', default=1, type=float)
 parser.add_argument('--keep_only_fit', dest='keep_only_fit', action='store_true')
+parser.add_argument('--alpha', default=1.0, type=float)
+parser.add_argument('--beta', default=0.01, type=float)
+parser.add_argument('--gamma', default=0.1, type=float)
 parser.set_defaults(keep_only_fit=False)
 parser.set_defaults(scaled=True)
 parser.set_defaults(load=False)
@@ -38,6 +41,10 @@ else:
     Net = SAILnet.SAILnet
     prefix = ''
 paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
+
+kwargs['alpha'] = args.alpha
+kwargs['beta'] = args.beta
+kwargs['gamma'] = args.gamma
 
 toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=0.05)
 
