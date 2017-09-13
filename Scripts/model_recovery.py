@@ -3,6 +3,7 @@ import scipy.io as io
 import pickle
 import argparse
 import os
+from pathlib import Path
 import sys
 import StimSet
 sys.path.append('../Code/')
@@ -41,10 +42,12 @@ else:
     Net = SAILnet.SAILnet
     prefix = ''
 paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
-num=0
-while: os.path.exists(paramfile) and not load:
+num = 0
+while os.path.exists(paramfile) and not args.load:
     paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p'+str(num)+'.pickle'
     num += 1
+# create file to reserve its name
+Path(paramfile).touch()
 
 kwargs['alpha'] = args.alpha
 kwargs['beta'] = args.beta
