@@ -35,7 +35,7 @@ kwargs = {'p': args.firing_rate,
 
 if args.scaled:
     Net = SAILmods.VarTimeSAILnet
-    prefix = 'scaled' + str(args.gain)
+    prefix = 'sc' + str(args.gain)+'ds'+str(args.desphere)
     kwargs['gain_rate'] = 0.0
     kwargs['gain'] = args.gain
 else:
@@ -53,8 +53,8 @@ kwargs['alpha'] = args.alpha
 kwargs['beta'] = args.beta
 kwargs['gamma'] = args.gamma
 
-toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=args.firing_rate,
-                           noise=args.firing_rate/10, white=True)
+toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=0.05,
+                           noise=0.005, white=True)
 
 if args.desphere > 0:
     with open('/global/home/users/edodds/vision/Data/vh32_256PCA.pickle', 'rb') as f:
