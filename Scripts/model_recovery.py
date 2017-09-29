@@ -56,12 +56,13 @@ kwargs['gamma'] = args.gamma
 toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=0.05,
                            noise=0.005, white=True)
 
+numinput = 256
 if args.desphere > 0:
     with open('/global/home/users/edodds/vision/Data/vh32_256PCA.pickle', 'rb') as f:
         impca, imshape = pickle.load(f)
-    toy.data = toy.data.dot(np.diag(np.power(impca.sValues, args.desphere)))
+    toy.data = toy.data.dot(np.diag(np.power(impca.sValues[:numinput], args.desphere)))
 
-numinput = 200
+
 numunits = int(numinput*args.oc)
 net = Net(data=toy, nunits=numunits,
           paramfile=paramfile,
