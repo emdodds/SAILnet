@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.io as io
 import pickle
 import argparse
 import os
@@ -23,6 +22,7 @@ parser.add_argument('--keep_only_fit', dest='keep_only_fit', action='store_true'
 parser.add_argument('--alpha', default=1.0, type=float)
 parser.add_argument('--beta', default=0.01, type=float)
 parser.add_argument('--gamma', default=0.1, type=float)
+parser.add_argument('--desphere', default=0.0, type=float) # 0 is leave whitened, 1 gives spectrum of natural images
 parser.set_defaults(keep_only_fit=False)
 parser.set_defaults(scaled=True)
 parser.set_defaults(load=False)
@@ -53,7 +53,13 @@ kwargs['alpha'] = args.alpha
 kwargs['beta'] = args.beta
 kwargs['gamma'] = args.gamma
 
-toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=0.05)
+toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=args.firing_rate,
+                           noise=args.firing_rate/10, white=True)
+
+if args.desphere > 0:
+    with open('/global/home/users/edodds/vision/Data/vh32_256PCA.pickle', 'rb') as f:
+        impca, imshape = pickle.load(f)
+    toy.data = toy.data.dot(np.diag(np.power(impca.sValues, args.desphere)))
 
 numinput = 200
 numunits = int(numinput*args.oc)
@@ -71,7 +77,7 @@ def track_fit(net, nsteps=100000, oldfits=None):
         errors = np.mean(net.compute_errors(acts, X))
         corrmatrix = net.store_statistics(acts, errors)
         net.objhistory = np.append(net.objhistory,
-                                    net.compute_objective(acts, X))
+                                   net.compute_objective(acts, X))
 
         net.learn(X, acts, corrmatrix)
 
