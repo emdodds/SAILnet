@@ -53,10 +53,10 @@ kwargs['alpha'] = args.alpha
 kwargs['beta'] = args.beta
 kwargs['gamma'] = args.gamma
 
-toy = StimSet.ToySparseSet(nonneg=args.nonneg, scale=0.05,
+numinput = 256
+toy = StimSet.ToySparseSet(dim=numinput, nonneg=args.nonneg, scale=0.05,
                            noise=0.005, white=True)
 
-numinput = 256
 if args.desphere > 0:
     with open('/global/home/users/edodds/vision/Data/vh32_256PCA.pickle', 'rb') as f:
         impca, imshape = pickle.load(f)
