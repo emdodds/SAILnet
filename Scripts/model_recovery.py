@@ -62,6 +62,7 @@ if args.desphere > 0:
         impca, imshape = pickle.load(f)
     toy.data = toy.data.dot(np.diag(np.power(impca.sValues[:numinput], args.desphere)))
 
+toy.data /= toy.data.std()
 
 numunits = int(numinput*args.oc)
 net = Net(data=toy, nunits=numunits,
