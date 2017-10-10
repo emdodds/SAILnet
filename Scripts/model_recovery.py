@@ -22,6 +22,7 @@ parser.add_argument('--keep_only_fit', dest='keep_only_fit', action='store_true'
 parser.add_argument('--alpha', default=1.0, type=float)
 parser.add_argument('--beta', default=0.01, type=float)
 parser.add_argument('--gamma', default=0.1, type=float)
+parser.add_argument('--noise', default=0.1, type=float)
 parser.add_argument('--desphere', default=0.0, type=float) # 0 is leave whitened, 1 gives spectrum of natural images
 parser.set_defaults(keep_only_fit=False)
 parser.set_defaults(scaled=True)
@@ -54,8 +55,9 @@ kwargs['beta'] = args.beta
 kwargs['gamma'] = args.gamma
 
 numinput = 256
-toy = StimSet.ToySparseSet(dim=numinput, nonneg=args.nonneg, scale=0.05,
-                           noise=0.005, white=True)
+datascale = 0.05
+toy = StimSet.ToySparseSet(dim=numinput, nonneg=args.nonneg, scale=datascale,
+                           noise=datascale*args.noise, white=True)
 
 if args.desphere > 0:
     with open('/global/home/users/edodds/vision/Data/vh32_256PCA.pickle', 'rb') as f:
