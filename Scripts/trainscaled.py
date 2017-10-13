@@ -83,35 +83,23 @@ elif datatype == 'smallpcaimages':
               stimshape=origshape, ninput=numinput,
               paramfile='pca16vh'+paramfile,
               **kwargs)
-elif datatype == 'smallpcaimages_alt':
-    datafile = '../../vision/Data/16x16vanHateren.npy'
-    numinput = 255  # last dim is noise
-    with open('../../vision/Data/16x16vanHaterenPCA.pickle', 'rb') as f:
+elif datatype.startswith('vh32_256ds'):
+    datafile = '../../vision/Data/vh32_256.npy'
+    numinput = 256
+    with open('../../vision/Data/vh32_256PCA.pickle', 'rb') as f:
         mypca, origshape = pickle.load(f)
     data = np.load(datafile)[:, :numinput]
     mypca.dim = numinput
+    power = float(datatype.split('ds')[-1])
+    data = data.dot(np.diag(np.power(mypca.sValues[:numinput], power)))
     data /= data.std()
     numunits = int(numinput * args.oc)
     net = Net(data=data, nunits=numunits,
               datatype='image',
               pca=mypca,
               stimshape=origshape, ninput=numinput,
-              paramfile='pca16vhfr'+paramfile,
+              paramfile=datatype+paramfile,
               **kwargs)
-elif datatype == 'smallunwhiteims':
-    datafile = '../../vision/Data/16x16vanHateren.npy'
-    with open('../../vision/Data/16x16vanHaterenPCA.pickle', 'rb') as f:
-        mypca, origshape = pickle.load(f)
-    data = np.load(datafile)[:, :numinput]
-    mypca.dim = 256
-    data /= data.std()
-    data = mypca.inverse_transform(data)
-    imset = StimSet.StimSet(data, stimshape=[16, 16], batch_size=100)
-    numinput = 256
-    numunits = int(numinput * args.oc)
-    net = Net(data=imset, nunits=numunits,
-              datatype='image',
-              stimshape=origshape, ninput=numinput, **kwargs)
 elif datatype == 'spectro':
     datafile = '../../audition/Data/allTIMIT'
     numinput = 200
@@ -126,15 +114,18 @@ elif datatype == 'spectro':
               stimshape=origshape, ninput=numinput,
               paramfile='allTIMIT'+paramfile,
               **kwargs)
+else:
+    raise ValueError('Data type not recognized: ' + str(datatype))
 
 if args.load:
     net.load(net.paramfile)
-else:
-    net.set_dot_inhib()
+#else:
+#    net.set_dot_inhib()
 
-net.run(10000)
+#net.run(10000)
+#net.save()
+net.run(100000)#, rate_decay=0.99999)
 net.save()
-net.run(100000, rate_decay=0.99999)
 
 if args.keep_only_error:
     error = np.mean(net.errorhist[-1000:])
