@@ -57,7 +57,7 @@ kwargs['gamma'] = args.gamma
 numinput = 256
 datascale = 0.05
 toy = StimSet.ToySparseSet(dim=numinput, nonneg=args.nonneg, scale=datascale,
-                           noise=datascale*args.noise, white=True)
+                           noise=datascale*args.noise, white=False)
 
 if args.desphere > 0:
     with open('/global/home/users/edodds/vision/Data/vh32_256PCA.pickle', 'rb') as f:
