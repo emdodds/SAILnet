@@ -56,7 +56,9 @@ kwargs['gamma'] = args.gamma
 
 numinput = 256
 datascale = 0.05
-toy = StimSet.ToySparseSet(dim=numinput, nonneg=args.nonneg, scale=datascale,
+numsources = int(numinput*args.oc)
+toy = StimSet.ToySparseSet(dim=numinput, nsource=numsources, nonneg=args.nonneg,
+                           scale=datascale,
                            noise=datascale*args.noise, white=False)
 
 if args.desphere > 0:
