@@ -49,7 +49,7 @@ else:
     prefix = 'lca'
 
 prefix = prefix + 'ds'+str(args.desphere)
-paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
+paramfile = 'toy'+prefix+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'
 num = 0
 while os.path.exists(paramfile) and not args.load:
     paramfile = 'toy'+prefix+'SAIL'+str(args.oc)+'oc'+str(args.firing_rate)+'p'+str(num)+'.pickle'

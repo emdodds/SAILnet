@@ -10,16 +10,15 @@ be a StimSet.ToySparseSet object.
 """
 
 
-
 class FittingLCA(LCALearner):
 
     def initialize_stats(self):
         self.modfits = np.array([])
         LCALearner.initialize_stats(self)
 
-    def store_stats(self, *args):
+    def store_statistics(self, *args, **kwargs):
         self.modfits = np.append(self.modfits, self.stims.test_fit(self.Q))
-        LCALearner.store_stats(self, *args)
+        LCALearner.store_stats(self, *args, **kwargs)
 
     def get_histories(self):
         histories = LCALearner.get_histories(self)
@@ -38,9 +37,9 @@ class FittingSAILnet(SAILnet):
         self.modfits = np.array([])
         SAILnet.initialize_stats(self)
 
-    def store_stats(self, *args):
+    def store_statistics(self, *args, **kwargs):
         self.modfits = np.append(self.modfits, self.stims.test_fit(self.Q))
-        SAILnet.store_stats(self, *args)
+        SAILnet.store_stats(self, *args, **kwargs)
 
     def get_histories(self):
         histories = SAILnet.get_histories(self)
