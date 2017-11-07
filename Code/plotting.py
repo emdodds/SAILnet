@@ -6,38 +6,42 @@ Created on Tue Mar 22 13:02:44 2016
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except:
+    print('Failed to import matplotlib.')
+
 
 class Plotter(object):
-    
+
     def __init__(self, net):
         self.net = net
-    
+
     def show_network(self):
         """
         Plot current values of weights, thresholds, and time-averaged firing
         correlations.
-        """    
+        """
         net = self.net
-        plt.subplot(2,2,1)
-        plt.imshow(net.W, cmap = "gray", interpolation="nearest",aspect='auto')
+        plt.subplot(2, 2, 1)
+        plt.imshow(net.W, cmap="gray", interpolation="nearest", aspect='auto')
         plt.colorbar()
         plt.title("Inhibitory weights")
-        
-        plt.subplot(2,2,2)
+
+        plt.subplot(2, 2, 2)
         C = net.corrmatrix_ave - np.outer(net.L1acts, net.L1acts)
         C = C - np.diag(np.diag(C))
-        plt.imshow(C, cmap = "gray", interpolation="nearest",aspect = 'auto')
+        plt.imshow(C, cmap="gray", interpolation="nearest", aspect='auto')
         plt.colorbar()
         plt.title("Moving time-averaged covariance matrix")
-        
-        plt.subplot(2,2,3)
+
+        plt.subplot(2, 2, 3)
         # The first point is usually huge compared to everything else, so just ignore it
-        plt.plot(net.objhistory[1:],'b', net.errorhist[1:], 'g')
+        plt.plot(net.objhistory[1:], 'b', net.errorhist[1:], 'g')
         plt.title("History of objective function (blue) and mean squared error")
-        
-        plt.subplot(2,2,4)
-        plt.bar(np.arange(net.theta.size),net.theta) 
+
+        plt.subplot(2, 2, 4)
+        plt.bar(np.arange(net.theta.size), net.theta)
         plt.title(r"Thresholds $\theta$")
 
     def visualize(self):
