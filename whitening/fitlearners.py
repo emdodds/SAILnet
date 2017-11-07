@@ -18,7 +18,7 @@ class FittingLCA(LCALearner):
 
     def store_statistics(self, *args, **kwargs):
         self.modfits = np.append(self.modfits, self.stims.test_fit(self.Q))
-        LCALearner.store_stats(self, *args, **kwargs)
+        LCALearner.store_statistics(self, *args, **kwargs)
 
     def get_histories(self):
         histories = LCALearner.get_histories(self)
@@ -39,7 +39,7 @@ class FittingSAILnet(SAILnet):
 
     def store_statistics(self, *args, **kwargs):
         self.modfits = np.append(self.modfits, self.stims.test_fit(self.Q))
-        SAILnet.store_stats(self, *args, **kwargs)
+        SAILnet.store_statistics(self, *args, **kwargs)
 
     def get_histories(self):
         histories = SAILnet.get_histories(self)
