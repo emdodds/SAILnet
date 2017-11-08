@@ -27,11 +27,14 @@ def get_params_and_errors(net, toy, nunits=256, folder='.',
             file = folder+file
             try:
                 net.load(file)
-                fit = np.load(file + 'fit.npy')
             except BaseException as ee:
                 exceptions.append(file)
                 continue
-            ok = net.units == nunits
+            try:
+                fit = np.load(file + 'fit.npy')
+            except FileNotFoundError:
+                fit = net.modfits
+            ok = net.nunits == nunits
             directtest = toy.test_fit(net.Q)
             ok = ok and not (directtest - fit[-1]) > 0.01 and fit[-1] != 0
             if ok:
@@ -89,6 +92,7 @@ def err_hp_scatter(firing_rates, gains, errors, fig=None, ax=None):
     ax.set_xlim([np.min(firing_rates)*0.8, np.max(firing_rates)*1.2])
     ax.set_ylim([np.min(gains)*0.8, np.max(gains)*1.2])
 
+
 def Q_and_svals(Q, pca, ds=1.0, ax=None, errorbars=False):
     if ax is None:
         fig = plt.figure()
@@ -101,7 +105,7 @@ def Q_and_svals(Q, pca, ds=1.0, ax=None, errorbars=False):
         qline, = ax.errorbar(np.arange(Q.shape[0]), means, yerr=stds, fmt='b.')
     else:
         qline, = ax.plot(np.arange(Q.shape[1]), means, 'b.')
-    svals = np.power(pca.sValues[:256], ds)
+    svals = np.power(pca.sValues[:Q.shape[1]], ds)
     svals /= np.max(svals)
     sline, = ax.plot(svals, 'g')
     # ax.set_title('SAILnet PC usage follows singular values')
@@ -123,10 +127,10 @@ def alt_Q_and_svals(Q, pca, ds=1.0, ax=None):
     ax.plot(svals, 'g')
 
 
-def desphere_results(net, desphere=1.0, folder='Pickles/4oc/'):
+def desphere_results(net, toy, pca_obj, desphere=1.0, folder='Pickles/4oc/'):
 
     (goodfiles, firing_rates, gains, errors, peaks, modfit,
-        peakmodfits) = get_params_and_errors(folder=folder, ds=desphere)
+        peakmodfits) = get_params_and_errors(net, toy, folder=folder, ds=desphere)
 
     fig = plt.figure()
     fitscat = fig.add_subplot(221)
@@ -145,7 +149,10 @@ def desphere_results(net, desphere=1.0, folder='Pickles/4oc/'):
     winner = goodfiles[ind]
     msewinner = goodfiles[np.nanargmin(errors)]
 
-    fittrace = np.load(winner+'fit.npy')
+    try:
+        fittrace = net.modfits
+    except:
+        fittrace = np.load(winner+'fit.npy')
     fitax = fig.add_subplot(222)
     fitax.plot(fittrace)
     fitax.set_xlabel('Training batches')
@@ -153,7 +160,7 @@ def desphere_results(net, desphere=1.0, folder='Pickles/4oc/'):
     # fitax.set_title('Time course of best model recovery')
 
     net.load(winner)
-    Q_and_svals(net.Q, ds=desphere, ax=fig.add_subplot(224))
+    Q_and_svals(net.Q, pca_obj, ds=desphere, ax=fig.add_subplot(224))
 
     fig.tight_layout()
 

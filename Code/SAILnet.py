@@ -16,7 +16,7 @@ Zylberberg, Murphy & DeWeese (2011) "A sparse coding model with synaptically
 local plasticity and spiking neurons can account for the diverse shapes of V1
 simple cell receptive fields", PLoS Computational Biology 7(10).
 """
-
+from __future__ import absolute_import, division, print_function
 import numpy as np
 import pickle
 from DictLearner import DictLearner
@@ -47,7 +47,8 @@ class SAILnet(DictLearner):
                  infrate=0.1,
                  moving_avg_rate=0.001,
                  paramfile='SAILnetparams.pickle',
-                 pca=None):
+                 pca=None,
+                 store_every=1):
         """
         Create SAILnet object with given parameters.
         Defaults are as used in Zylberberg et al.
@@ -71,6 +72,7 @@ class SAILnet(DictLearner):
         moving_avg_rate:    (float) rate for averaging stats
         paramfile:          (str) filename for saving parameters
         pca:                (pca) PCA object used to create vector inputs
+        store_every:        (int) how many batches between storing stats
 
         Raises:
         ValueError when datatype is not one of the supported options.
@@ -92,6 +94,7 @@ class SAILnet(DictLearner):
         self.plotter = plotting.Plotter(self)
         self.ninput = ninput  # N in original MATLAB code
         self.stimshape = stimshape
+        self.store_every = store_every
 
         self._load_stims(data, datatype, self.stimshape, self.pca)
 
@@ -192,9 +195,12 @@ class SAILnet(DictLearner):
 
             acts = self.infer(X)
             errors = np.mean(self.compute_errors(acts, X))
-            corrmatrix = self.store_statistics(acts, errors)
-            self.objhistory = np.append(self.objhistory,
-                                        self.compute_objective(acts, X))
+            if t % self.store_every == 0:
+                corrmatrix = self.store_statistics(acts, errors)
+                self.objhistory = np.append(self.objhistory,
+                    self.compute_objective(acts, X))
+            else:
+                corrmatrix = self.compute_corrmatrix(acts, errors, acts.mean(1))
 
             self.learn(X, acts, corrmatrix)
 

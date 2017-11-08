@@ -76,6 +76,7 @@ toy.data /= toy.data.std()
 numunits = int(numinput*args.oc)
 net = Net(data=toy, nunits=numunits,
           paramfile=paramfile,
+          store_every=100,
           **kwargs)
 
 net.run(100000)
