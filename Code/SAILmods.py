@@ -159,18 +159,24 @@ class NLnet(VarTimeSAILnet):
         self.W = self.W + dW
         self.W = self.W - np.diag(np.diag(self.W)) # zero diagonal entries
         self.W[self.W < 0] = 0 # force weights to be inhibitory
-        
+
         # update thresholds with Foldiak's rule: keep firing rates near target
         dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
-        
+
+
 class LCAILnet(SAILnet.SAILnet):
     """
-    A SAILnet-LCA hybrid. Inference is like LCA except activities are only positive, 
-    the inhibitory connection strengths are learned as in SAILnet, and the 
+    A SAILnet-LCA hybrid. Inference is like LCA except activities are only positive,
+    the inhibitory connection strengths are learned as in SAILnet, and the
     thresholds (lambda) are learned as in SAILnet. The dictionary learning rule
     is gradient descent, not the approximate SAILnet rule.
     """
+    def __init__(self, *args, softthresh=False, nonneg=True, **kwargs):
+        self.softthresh = softthresh
+        self.nonneg = nonneg
+        SAILnet.SAILnet.__init__(self, *args, **kwargs)
+
     def infer(self, X, infplot=False, savestr=None):
         ndict = self.Q.shape[0]
         thresh = self.theta
@@ -196,12 +202,18 @@ class LCAILnet(SAILnet.SAILnet):
             u[:] = self.infrate*(b-ci) + (1.-self.infrate)*u
             if np.max(np.isnan(u)):
                 raise ValueError("Internal variable blew up at iteration " + str(kk))
-            #if self.softthresh:
-             #   s[:] = np.sign(u)*np.maximum(0.,np.absolute(u)-thresh[:,np.newaxis]) 
+            if self.softthresh:
+                if self.nonneg:
+                    s[:] = np.maximum(0., u-thresh[np.newaxis, :])
+                else:
+                    s[:] = np.sign(u)*np.maximum(0.,
+                        np.absolute(u)-thresh[np.newaxis, :])
             else:
                 s[:] = u
-                #s[np.absolute(s) < thresh] = 0
-                s[s<thresh] = 0
+                if self.nonneg:
+                    s[s < thresh] = 0
+                else:
+                    s[np.absolute(s) < thresh] = 0
 
             if infplot:
                 errors[kk] = np.mean((X.T - s.dot(self.Q))**2)
@@ -209,9 +221,9 @@ class LCAILnet(SAILnet.SAILnet):
 
         if infplot:
             self.plotter.inference_plots(errors, yhist, savestr=savestr)
-            
+
         return s.T
-    
+
     def learn(self, X, acts, corrmatrix):
         """Use learning rules to update network parameters."""
 
@@ -233,6 +245,86 @@ class LCAILnet(SAILnet.SAILnet):
         dtheta = self.gamma*(np.sum(acts,1)/self.batch_size - self.p)
         self.theta = self.theta + dtheta
         self.theta[self.theta<0] = 0
+
+
+class LocalDictRuleLCA(LCAILnet):
+    """SAILnet with W fixed at Gram matrix of Phi and LCA-like inference.
+    Equivalently, LCA with local Phi learning rule.
+    Exception: Q is normalized."""
+    def learn(self, X, acts, corrmatrix):
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts, 1)  # square, then sum over images
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+        normmatrix = np.diag(1./np.sqrt(np.sum(self.Q*self.Q, 1)))
+        self.Q = normmatrix.dot(self.Q)
+
+        self.W = self.Q.dot(self.Q.T)
+
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*(np.sum(acts, 1)/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+
+
+class LCALocalLearner(LCAILnet):
+    """LCA-like inference with SAILnet structure and learning rules.
+    +/- symmetric by default. Lateral weights not constrained to be
+    inhibitory."""
+    def __init__(self, *args, softthresh=True, nonneg=False, **kwargs):
+        LCAILnet.__init__(self, *args, softthresh=softthresh,
+                          nonneg=nonneg, **kwargs)
+
+    def learn(self, X, acts, corrmatrix):
+        """Use learning rules to update network parameters."""
+
+        # update feedforward weights with Oja's rule
+        sumsquareacts = np.sum(acts*acts, 1)  # square, then sum over images
+        dQ = acts.dot(X.T) - np.diag(sumsquareacts).dot(self.Q)
+        self.Q = self.Q + self.beta*dQ/self.batch_size
+
+        # update lateral weights with Foldiak's rule
+        # (inhibition for decorrelation)
+        corr = corrmatrix
+        if self.nonneg:
+            corr -= self.p**2
+        dW = self.alpha*corr
+        self.W = self.W + dW
+        self.W = self.W - np.diag(np.diag(self.W))  # zero diagonal entries
+        # self.W[self.W < 0] = 0  # force weights to be inhibitory
+
+        # update thresholds with Foldiak's rule: keep firing rates near target
+        dtheta = self.gamma*(np.sum(np.abs(acts), 1)/self.batch_size - self.p)
+        self.theta = self.theta + dtheta
+
+    def compute_objective(self, acts, X):
+        """Compute value of objective/Lagrangian averaged over batch."""
+        errorterm = np.mean(self.compute_errors(acts, X))
+        rateterm = np.mean((np.abs(acts)-self.p)*self.theta[:, np.newaxis])
+        corrWmatrix = acts.T.dot(self.W).dot(acts)
+        corrterm = (1/acts.shape[1]**2)*np.trace(corrWmatrix)
+        return (errorterm*self.beta/2 + rateterm*self.gamma +
+                corrterm*self.alpha)
+
+    def set_dot_inhib(self):
+        """Sets each lateral weight to the dot product of the corresponding
+        units' feedforward weights."""
+        self.W = self.Q.dot(self.Q.T)
+        self.W = self.W - np.diag(np.diag(self.W))  # zero diagonal entries
+        # self.W[self.W < 0] = 0  # force weights to be inhibitory
+
+    def initialize(self, theta0=0.5):
+        """Initialize or reset weights, averages, histories."""
+        # Q are feedfoward weights (i.e. from input units to output units)
+        # W are horizontal conections (among 'output' units)
+        # theta are thresholds for the LIF neurons
+        self.Q = self.rand_dict()
+        self.W = np.zeros((self.nunits, self.nunits))
+        self.theta = theta0*np.ones(self.nunits)
+
+        # initialize average activity stats
+        self.initialize_stats()
+        self.corrmatrix_ave = 0
+        self.objhistory = np.array([])
 
 
 class MirrorSAIL(SAILnet.SAILnet):
