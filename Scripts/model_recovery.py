@@ -5,11 +5,12 @@ import os
 from pathlib import Path
 import sys
 import StimSet
+import SAILmods
 sys.path.append('../whitening/')
 import fitlearners
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lca', dest='sail', action='store_false')
+parser.add_argument('--learner', default='SAILnet', type=str)
 parser.add_argument('-g', '--gain', default=2, type=float)
 parser.add_argument('--load', dest='load', action='store_true')
 parser.add_argument('-w', '--whiten', dest='whiten', action='store_true')
@@ -24,21 +25,20 @@ parser.add_argument('--noise', default=0.1, type=float)
 parser.add_argument('--desphere', default=0.0, type=float) # 0 is leave whitened, 1 gives spectrum of natural images
 parser.add_argument('--dim', default=256, type=int)
 parser.set_defaults(keep_only_fit=False)
-parser.set_defaults(sail=True)
 parser.set_defaults(load=False)
 parser.set_defaults(whiten=False)
 parser.set_defaults(nonneg=False)
 args = parser.parse_args()
 
 
-if args.sail:
+if args.learner == 'SAILnet':
     Net = fitlearners.FittingSAILnet
     prefix = 'sail' + str(args.gain)
     kwargs = {'p': args.firing_rate,
               'theta0': 1.5,
               'gain_rate': 0.0,
               'gain': args.gain}
-else:
+elif args.learner == 'LCA':
     Net = fitlearners.FittingLCA
     kwargs = {'lam': args.firing_rate,
               'learnrate': 50.0,
@@ -47,6 +47,15 @@ else:
               'seek_snr_rate': 0.0,
               'threshfunc': 'soft'}
     prefix = 'lca'
+elif args.learner == 'LCALocal':
+    Net = fitlearners.make_fit_learner_class(SAILmods.LCALocalLearner)
+    prefix = 'lcalocal'
+    kwargs = {'p': args.firing_rate,
+              'theta0': 1.5,
+              'niter': 200,
+              'alpha': 0.1}
+else:
+    raise ValueError('Learner class not supported.')
 
 prefix = prefix + 'ds'+str(args.desphere)
 paramfile = 'toy'+prefix+str(args.oc)+'oc'+str(args.firing_rate)+'p.pickle'

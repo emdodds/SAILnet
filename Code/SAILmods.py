@@ -217,7 +217,7 @@ class LCAILnet(SAILnet.SAILnet):
 
             if infplot:
                 errors[kk] = np.mean((X.T - s.dot(self.Q))**2)
-                yhist[kk] = np.mean(s)
+                yhist[kk] = np.mean(np.abs(s))
 
         if infplot:
             self.plotter.inference_plots(errors, yhist, savestr=savestr)
@@ -291,6 +291,13 @@ class LCALocalLearner(LCAILnet):
         self.W = self.W + dW
         self.W = self.W - np.diag(np.diag(self.W))  # zero diagonal entries
         # self.W[self.W < 0] = 0  # force weights to be inhibitory
+
+        # individual synapses should not be too strong. clip them.
+        # TODO: think of less hacky way to handle explosion problem
+        toobigW = np.abs(self.W) > 1
+        self.W[toobigW] = np.sign(self.W[toobigW])
+        toobigQ = np.abs(self.Q) > 1
+        self.Q[toobigQ] = np.sign(self.Q[toobigQ])
 
         # update thresholds with Foldiak's rule: keep firing rates near target
         dtheta = self.gamma*(np.sum(np.abs(acts), 1)/self.batch_size - self.p)
