@@ -7,7 +7,8 @@
 #SBATCH --time=48:00:00
 #
 # Memory:
-#SBATCH --mem-per-cpu=8G
+#SBATCH --mem-per-cpu=4G
+
 
 cd /global/home/users/edodds/SAILnet/Scripts
-python trainscaled.py -g $gain -d smallpcaimages -p $p --oc $oc $keeponly
+python model_recovery.py -g $gain -p $p --oc $oc --desphere $ds --nonneg

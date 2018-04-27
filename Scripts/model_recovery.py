@@ -52,8 +52,7 @@ elif args.learner == 'LCALocal':
     prefix = 'lcalocal'
     kwargs = {'p': args.firing_rate,
               'theta0': 1.5,
-              'niter': 200,
-              'alpha': 0.1}
+              'niter': 200}
 else:
     raise ValueError('Learner class not supported.')
 

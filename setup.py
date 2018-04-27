@@ -15,7 +15,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     setup(
         name='SAILnet',
         description='SAILnet algorithm with extensions.',
-        long_description=long_description
+        long_description=long_description,
         )
 """
 # To provide executable scripts, use entry points in preference to the
