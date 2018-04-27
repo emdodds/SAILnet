@@ -6,7 +6,6 @@ from pathlib import Path
 import sys
 import StimSet
 import SAILmods
-sys.path.append('../whitening/')
 import fitlearners
 
 parser = argparse.ArgumentParser()
@@ -32,14 +31,15 @@ args = parser.parse_args()
 
 
 if args.learner == 'SAILnet':
-    Net = fitlearners.FittingSAILnet
+    Net = fitlearners.make_fit_learner_class(SAILmods.VarTimeSAILnet)
     prefix = 'sail' + str(args.gain)
     kwargs = {'p': args.firing_rate,
               'theta0': 1.5,
               'gain_rate': 0.0,
               'gain': args.gain}
 elif args.learner == 'LCA':
-    Net = fitlearners.FittingLCA
+    import tf_lca
+    Net = fitlearners.make_fit_learner_class(tf_lca.LCALearner)
     kwargs = {'lam': args.firing_rate,
               'learnrate': 50.0,
               'infrate': 0.1,
@@ -53,6 +53,14 @@ elif args.learner == 'LCALocal':
     kwargs = {'p': args.firing_rate,
               'theta0': 1.5,
               'niter': 200}
+elif args.learner == 'MPSAILnet':
+    prefix = 'MP'+str(args.gain)+'p'+str(args.firing_rate)
+    import balance_sparse
+    Net = fitlearners.make_fit_learner_class(balance_sparse.mpbSAILnet)
+    kwargs = {'p': args.firing_rate,
+              'theta0': 1.0,
+              'gain_rate': 0.0,
+              'gain': args.gain}
 else:
     raise ValueError('Learner class not supported.')
 
