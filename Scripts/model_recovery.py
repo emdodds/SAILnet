@@ -3,9 +3,8 @@ import pickle
 import argparse
 import os
 from pathlib import Path
-import sys
 import StimSet
-import SAILmods
+from SAILnet import SAILmods
 import fitlearners
 
 parser = argparse.ArgumentParser()
